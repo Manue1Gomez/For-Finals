@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="../css/layout.css">
   <link rel="stylesheet" href="../css/sidebar.css">
   <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/reschedule-requests.css">
 </head>
 <body class="admin-layout">
 
@@ -38,68 +39,76 @@
 
     <div class="sidebar__footer">
       <a class="sidebar__new-booking" href="new-booking.html">New Booking</a>
-      <a class="sidebar__logout" href="../../customer/html/login.html">
+      <button class="sidebar__logout" type="button" data-logout>
         <span class="sidebar__logout-icon" aria-hidden="true"></span>
         Logout
-      </a>
+      </button>
     </div>
   </aside>
 
   <main class="admin-main">
     <header class="page-header">
-      <p class="page-header__eyebrow">Operations</p>
+      <p class="page-header__eyebrow">Schedule Changes</p>
       <h1 class="page-header__title">Rescheduling Requests</h1>
-      <p class="page-header__subtitle">Review and act on schedule change requests submitted by customers.</p>
     </header>
 
-    <p class="status-message" id="pageStatus" role="status">Loading requests…</p>
+    <p class="status-message" id="pageStatus" role="status">Loading requests&hellip;</p>
 
-    <div class="table-wrap" id="tableWrap" hidden>
-      <table class="data-table" aria-label="Reschedule requests">
-        <thead>
-          <tr>
-            <th scope="col">Booking</th>
-            <th scope="col">Customer &amp; Service</th>
-            <th scope="col">Current Schedule</th>
-            <th scope="col">Requested Schedule</th>
-            <th scope="col">Requested On</th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="tableBody"></tbody>
-      </table>
-    </div>
+    <section class="request-list" id="requestList" aria-label="Pending rescheduling requests" hidden></section>
 
-    <p class="status-message" id="emptyStatus" role="status" hidden>No pending rescheduling requests.</p>
+    <p class="request-empty" id="emptyStatus" role="status" hidden>
+      No pending rescheduling requests. New requests from customers will appear here.
+    </p>
   </main>
+
+  <dialog class="dialog" id="confirmDialog" aria-labelledby="confirmDialogTitle">
+    <div class="dialog__form">
+      <h2 class="dialog__title" id="confirmDialogTitle"></h2>
+      <p class="dialog__text" id="confirmMessage"></p>
+      <p class="alert alert--error" id="confirmError" role="alert" hidden></p>
+
+      <div class="dialog__actions">
+        <button class="btn" type="button" data-dialog-close>Cancel</button>
+        <button class="btn" type="button" id="confirmButton"></button>
+      </div>
+    </div>
+  </dialog>
 
   <p class="toast" id="toast" role="status" hidden></p>
 
-  <template id="rowTemplate">
-    <tr class="data-row">
-      <td><strong class="row-ref"></strong></td>
-      <td>
-        <span class="row-name"></span><br>
-        <span class="row-services" style="font-size:0.8125rem;color:#6b6b70;"></span>
-      </td>
-      <td>
-        <span class="row-old-date"></span><br>
-        <span class="row-old-time" style="font-size:0.875rem;color:#6b6b70;"></span>
-      </td>
-      <td>
-        <span class="row-new-date"></span><br>
-        <span class="row-new-time" style="font-size:0.875rem;color:#6b6b70;"></span>
-      </td>
-      <td class="row-requested-at" style="font-size:0.875rem;"></td>
-      <td>
-        <div class="row-actions">
-          <button class="btn btn--sm btn--success" type="button" data-action="approve">Approve</button>
-          <button class="btn btn--sm btn--danger" type="button" data-action="reject">Reject</button>
+  <template id="requestCardTemplate">
+    <article class="panel request-card">
+      <header class="request-card__header">
+        <h2 class="request-card__reference"></h2>
+        <p class="request-card__requested"></p>
+      </header>
+
+      <p class="request-card__summary"></p>
+
+      <div class="request-card__schedules">
+        <div class="schedule-box">
+          <p class="schedule-box__label">Original</p>
+          <p class="schedule-box__date" data-field="oldDate"></p>
+          <p class="schedule-box__time" data-field="oldTime"></p>
         </div>
-      </td>
-    </tr>
+
+        <span class="request-card__arrow" aria-hidden="true"></span>
+
+        <div class="schedule-box schedule-box--requested">
+          <p class="schedule-box__label">Requested</p>
+          <p class="schedule-box__date" data-field="newDate"></p>
+          <p class="schedule-box__time" data-field="newTime"></p>
+        </div>
+      </div>
+
+      <div class="request-card__actions">
+        <button class="btn btn--primary" type="button" data-action="approve">Approve</button>
+        <button class="btn" type="button" data-action="reject">Reject</button>
+      </div>
+    </article>
   </template>
 
+  <script type="module" src="../js/admin-session.js"></script>
   <script type="module" src="../js/reschedule-requests.js"></script>
 </body>
 </html>

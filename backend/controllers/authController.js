@@ -3,12 +3,12 @@ const sendError = require('./errorResponse');
 
 const SESSION_COOKIE = 'brb.sid';
 
-function startSession(req, customer) {
+function startSession(req, role, profile) {
   return new Promise((resolve, reject) => {
     req.session.regenerate((regenerateError) => {
       if (regenerateError) return reject(regenerateError);
 
-      req.session.customer = customer;
+      req.session[role] = profile;
       req.session.save((saveError) => (saveError ? reject(saveError) : resolve()));
     });
   });
@@ -29,10 +29,10 @@ async function register(req, res, next) {
 
 async function login(req, res, next) {
   try {
-    const customer = await authService.authenticateCustomer(req.body);
-    await startSession(req, customer);
+    const { role, profile, redirectTo } = await authService.authenticateUser(req.body);
+    await startSession(req, role, profile);
 
-    res.json({ message: 'Login successful.', redirectTo: authService.CUSTOMER_HOME, customer });
+    res.json({ message: 'Login successful.', role, redirectTo, [role]: profile });
   } catch (error) {
     sendError(error, res, next);
   }
@@ -54,4 +54,11 @@ function getCurrentCustomer(req, res) {
   res.json({ customer: req.session.customer });
 }
 
-module.exports = { register, login, logout, getCurrentCustomer };
+function getCurrentAdmin(req, res) {
+  if (!req.session.admin) {
+    return res.status(401).json({ message: 'Administrator login required.' });
+  }
+  res.json({ admin: req.session.admin });
+}
+
+module.exports = { register, login, logout, getCurrentCustomer, getCurrentAdmin };
