@@ -1,6 +1,6 @@
 import { getJson, sendJson, deleteRequest } from './admin-api.js';
 import { formatDate, formatDateTime, formatLongDate, formatPeso, statusSlug } from './format.js';
-import { clearFieldOnInput, clearFormErrors, enableDialogDismiss, showFormError, showToast } from './ui.js';
+import { clearFieldOnInput, enableDialogDismiss, showToast } from './ui.js';
 
 const API_BASE = '/api/admin/bookings';
 const SERVICES_API = '/api/admin/services';
@@ -9,17 +9,10 @@ const CONTRACT_PAGE = '/customer/html/contract.html';
 
 
 const GROUP_LABELS = {
-  ongoing: 'Upcoming and ongoing',
+  upcoming: 'Upcoming',
+  ongoing: 'Ongoing',
   completed: 'Completed',
   rejected: 'Rejected',
-};
-
-const STATUS_HINTS = {
-  Pending: 'Waiting for your review.',
-  'To Pay': 'Accepted. The customer can now pay the 50% downpayment.',
-  Confirmed: 'The downpayment was verified and the schedule is reserved.',
-  Completed: 'The event is done. Any unpaid balance stays on the Payments page.',
-  Rejected: 'The customer will see this booking as rejected.',
 };
 
 const elements = {
@@ -49,15 +42,6 @@ const elements = {
   viewPayments: document.getElementById('viewPayments'),
   viewNoPayments: document.getElementById('viewNoPayments'),
   viewContract: document.getElementById('viewContractButton'),
-  viewUpdate: document.getElementById('viewUpdateButton'),
-
-  updateDialog: document.getElementById('updateDialog'),
-  updateForm: document.getElementById('updateForm'),
-  updateReference: document.getElementById('updateReference'),
-  updateStatus: document.getElementById('updateStatus'),
-  updateStatusHint: document.getElementById('updateStatusHint'),
-  updateScheduleHint: document.getElementById('updateScheduleHint'),
-  saveUpdate: document.getElementById('saveUpdateButton'),
 
   confirmDialog: document.getElementById('confirmDialog'),
   confirmTitle: document.getElementById('confirmTitle'),
@@ -70,7 +54,7 @@ const state = {
   search: '',
   serviceId: '',
   date: '',
-  status: 'all',
+  status: 'Pending',
   page: 1,
   pageSize: 10,
   data: null,
@@ -79,15 +63,14 @@ const state = {
 let latestRequest = 0;
 let searchTimer = null;
 let pendingConfirm = null;
-let editing = null;
 let viewing = null;
 
-const hasActiveFilters = () => Boolean(state.search || state.serviceId || state.date || state.status !== 'all');
+const hasActiveFilters = () => Boolean(state.search || state.serviceId || state.date);
 
 function buildQuery() {
   const params = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
 
-  if (state.status !== 'all') params.set('status', state.status);
+  params.set('status', state.status);
   if (state.search) params.set('search', state.search);
   if (state.serviceId) params.set('serviceId', state.serviceId);
   if (state.date) params.set('date', state.date);
@@ -97,12 +80,7 @@ function buildQuery() {
 
 function createGroupRow(group, counts) {
   const row = elements.groupTemplate.content.firstElementChild.cloneNode(true);
-  const groupTotals = {
-    ongoing: counts.Pending + counts['To Pay'] + counts.Confirmed,
-    completed: counts.Completed,
-    rejected: counts.Rejected,
-  };
-  const total = state.status === 'all' ? groupTotals[group] : counts[state.status];
+  const total = counts[state.status];
 
   row.querySelector('.group-row__label').textContent = GROUP_LABELS[group];
   row.querySelector('.group-row__count').textContent = total;
@@ -144,7 +122,6 @@ function createBookingRow(booking) {
 
   row.querySelector('[data-action="view"]').setAttribute('aria-label', `View booking ${label}`);
   row.querySelector('[data-action="contract"]').setAttribute('aria-label', `Contract for booking ${label}`);
-  row.querySelector('[data-action="update"]').setAttribute('aria-label', `Update booking ${label}`);
   row.querySelector('[data-action="delete"]').setAttribute('aria-label', `Delete booking ${label}`);
 
   return row;
@@ -158,7 +135,7 @@ function renderTabs(counts) {
     tab.classList.toggle('status-tab--active', isActive);
     tab.classList.toggle('status-tab--attention', status === 'Pending' && counts.Pending > 0);
     tab.setAttribute('aria-pressed', String(isActive));
-    tab.querySelector('.status-tab__count').textContent = counts[status === 'all' ? 'all' : status];
+    tab.querySelector('.status-tab__count').textContent = counts[status] ?? 0;
   });
 }
 
@@ -183,7 +160,7 @@ function renderTable() {
   if (bookings.length === 0) {
     elements.bookingStatus.textContent = hasActiveFilters()
       ? 'No bookings match your search or filters.'
-      : 'There are no bookings yet.';
+      : `There are no ${state.status.toLowerCase()} bookings yet.`;
   }
 
   const first = (page - 1) * pageSize + 1;
@@ -194,6 +171,15 @@ function renderTable() {
   elements.nextPage.disabled = last >= total;
   elements.clearFilters.hidden = !hasActiveFilters();
   renderTabs(counts);
+}
+
+async function autoCompleteConfirmed() {
+  try {
+    await sendJson(`${API_BASE}/auto-complete`, 'POST', {});
+  } catch (error) {
+    // Non-critical — log silently and continue
+    console.warn('Auto-complete check failed:', error.message);
+  }
 }
 
 async function loadBookings() {
@@ -361,84 +347,6 @@ async function openView(id) {
   }
 }
 
-function describeStatusHint(status, details) {
-  if (details.allowedStatuses.length === 0 && details.status === 'Confirmed') {
-    return 'It can be marked Completed once the event date has passed.';
-  }
-
-  return STATUS_HINTS[status];
-}
-
-function fillUpdateForm(details) {
-  const form = elements.updateForm.elements;
-  const options = [details.status, ...details.allowedStatuses];
-
-  elements.updateStatus.replaceChildren(
-    ...options.map((status) => {
-      const option = document.createElement('option');
-      option.value = status;
-      option.textContent = status === details.status ? `${status} (current)` : status;
-      return option;
-    })
-  );
-  elements.updateStatus.disabled = details.allowedStatuses.length === 0;
-  elements.updateStatusHint.textContent = describeStatusHint(details.status, details);
-
-  form.eventDate.value = details.eventDate;
-  form.startTime.value = details.startTime;
-  form.endTime.value = details.endTime;
-  form.eventAddress.value = details.eventAddress ?? '';
-
-  [form.eventDate, form.startTime, form.endTime].forEach((input) => {
-    input.disabled = !details.canReschedule;
-  });
-  elements.updateScheduleHint.textContent = details.canReschedule
-    ? 'Changing the date or time checks blocked dates and other bookings of the same service.'
-    : "Completed and rejected bookings can't be rescheduled.";
-}
-
-async function openUpdate(id) {
-  try {
-    editing = await getJson(`${API_BASE}/${id}`);
-  } catch (error) {
-    showToast(error.message, 'error');
-    return;
-  }
-
-  clearFormErrors(elements.updateForm);
-  elements.updateReference.textContent = `Booking #${editing.reference} \u00B7 ${editing.customer.name}`;
-  fillUpdateForm(editing);
-  elements.saveUpdate.disabled = false;
-  elements.updateDialog.showModal();
-}
-
-async function submitUpdate(event) {
-  event.preventDefault();
-  clearFormErrors(elements.updateForm);
-  elements.saveUpdate.disabled = true;
-
-  const form = elements.updateForm.elements;
-  const payload = { status: form.status.value, eventAddress: form.eventAddress.value };
-
-  if (editing.canReschedule) {
-    payload.eventDate = form.eventDate.value;
-    payload.startTime = form.startTime.value;
-    payload.endTime = form.endTime.value;
-  }
-
-  try {
-    await sendJson(`${API_BASE}/${editing.id}`, 'PUT', payload);
-
-    elements.updateDialog.close();
-    showToast(`Booking #${editing.reference} was updated.`);
-    await loadBookings();
-  } catch (error) {
-    showFormError(elements.updateForm, error);
-  } finally {
-    elements.saveUpdate.disabled = false;
-  }
-}
-
 function openConfirm({ title, message, confirmLabel, variant, action, successMessage }) {
   pendingConfirm = { action, successMessage };
 
@@ -537,7 +445,6 @@ elements.clearFilters.addEventListener('click', () => {
   state.search = '';
   state.serviceId = '';
   state.date = '';
-  state.status = 'all';
   elements.searchInput.value = '';
   elements.serviceFilter.value = '';
   elements.dateFilter.value = '';
@@ -570,32 +477,19 @@ elements.bookingBody.addEventListener('click', (event) => {
   const action = button.dataset.action;
 
   if (action === 'view') openView(booking.id);
-  if (action === 'update') openUpdate(booking.id);
-  if (action === 'contract') window.open(`${CONTRACT_PAGE}?id=${booking.id}`, '_blank');
+  if (action === 'contract') window.open(`${CONTRACT_PAGE}?id=${booking.id}&from=admin`, '_blank');
   if (action === 'delete') confirmDelete(booking);
   if (action === 'accept') confirmAccept(booking);
   if (action === 'decline') confirmDecline(booking);
 });
 
 elements.viewContract.addEventListener('click', () => {
-  if (viewing) window.open(`${CONTRACT_PAGE}?id=${viewing.id}`, '_blank');
+  if (viewing) window.open(`${CONTRACT_PAGE}?id=${viewing.id}&from=admin`, '_blank');
 });
 
-elements.viewUpdate.addEventListener('click', () => {
-  const id = viewing.id;
-
-  elements.viewDialog.close();
-  openUpdate(id);
-});
-
-elements.updateStatus.addEventListener('change', () => {
-  elements.updateStatusHint.textContent = STATUS_HINTS[elements.updateStatus.value];
-});
-
-elements.updateForm.addEventListener('submit', submitUpdate);
 elements.confirmButton.addEventListener('click', runConfirmed);
 
-clearFieldOnInput(elements.updateForm);
+clearFieldOnInput(elements.viewDialog);
 enableDialogDismiss();
 loadServiceOptions();
-loadBookings();
+autoCompleteConfirmed().then(() => loadBookings());

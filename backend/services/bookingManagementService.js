@@ -286,4 +286,32 @@ async function deleteBooking(rawId) {
   if (!(await bookingManagementModel.remove(id))) throw new AppError('Booking not found.', 404);
 }
 
-module.exports = { listBookings, getBookingDetails, updateBooking, deleteBooking };
+async function autoCompleteBookings() {
+  const today = todayIso();
+
+  const [rows] = await withTransaction(async (connection) => {
+    const [eligible] = await connection.query(
+      `SELECT booking_id FROM booking
+        WHERE status = 'Confirmed'
+          AND event_date < ?
+          AND amount_paid >= total_amount
+          AND total_amount > 0
+        FOR UPDATE`,
+      [today]
+    );
+
+    if (eligible.length > 0) {
+      const ids = eligible.map((row) => row.booking_id);
+      await connection.query(
+        `UPDATE booking SET status = 'Completed' WHERE booking_id IN (?)`,
+        [ids]
+      );
+    }
+
+    return [eligible];
+  });
+
+  return { completed: rows.length };
+}
+
+module.exports = { listBookings, getBookingDetails, updateBooking, deleteBooking, autoCompleteBookings };

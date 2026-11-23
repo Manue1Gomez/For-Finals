@@ -34,4 +34,13 @@ async function remove(req, res, next) {
   }
 }
 
-module.exports = { list, details, update, remove };
+async function autoComplete(req, res, next) {
+  try {
+    const result = await bookingService.autoCompleteBookings();
+    res.json(result);
+  } catch (error) {
+    sendError(error, res, next);
+  }
+}
+
+module.exports = { list, details, update, remove, autoComplete };

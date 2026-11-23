@@ -1,9 +1,23 @@
 const params     = new URLSearchParams(window.location.search);
 const bookingId  = params.get('id');
+const fromAdmin  = params.get('from') === 'admin';
 
 const loading    = document.getElementById('contractLoading');
 const errorEl    = document.getElementById('contractError');
 const page       = document.getElementById('contractPage');
+const backButton = document.getElementById('backButton');
+
+// If this tab was opened by a script (window.open), close it to go back.
+// Otherwise fall back to history navigation.
+backButton.addEventListener('click', () => {
+  if (window.opener && !window.opener.closed) {
+    window.close();
+  } else if (window.history.length > 1) {
+    window.history.back();
+  } else {
+    window.location.href = fromAdmin ? '/admin/html/bookings.html' : 'my-bookings.html';
+  }
+});
 
 const longDate = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
