@@ -1,0 +1,607 @@
+.bookings-page__title {
+  margin-bottom: 1.5rem;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  font-weight: 400;
+  color: var(--color-ink-soft);
+}
+
+.bookings-page__status {
+  margin-top: 2rem;
+  text-align: center;
+  color: var(--color-muted);
+}
+
+/* ── Status tabs ─────────────────────────────────────────────────────── */
+
+.status-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.75rem;
+}
+
+.status-tab {
+  height: 2.1rem;
+  padding: 0 1rem;
+  font-size: 0.875rem;
+  color: var(--color-ink-soft);
+  background: var(--color-surface);
+  border: 1.5px solid #d1d1d6;
+  border-radius: 2rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.status-tab:hover {
+  border-color: var(--color-brand);
+  color: var(--color-brand-dark);
+}
+
+.status-tab--active {
+  color: #fff;
+  background: var(--color-brand);
+  border-color: var(--color-brand);
+}
+
+/* ── Booking cards grid ──────────────────────────────────────────────── */
+
+.booking-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.1rem;
+}
+
+.booking-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.1rem;
+  background: var(--color-surface);
+  border: 1.5px solid #d1d1d6;
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s ease;
+}
+
+.booking-card:hover {
+  border-color: var(--color-brand);
+}
+
+.booking-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.booking-card__ref {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+}
+
+.booking-card__badge {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-brand-dark);
+}
+
+.booking-card__body {
+  display: flex;
+  gap: 0.9rem;
+  flex: 1;
+  margin-bottom: 0.9rem;
+}
+
+.booking-card__media {
+  flex: none;
+  width: 5.6rem;
+  height: 5.6rem;
+  overflow: hidden;
+  background: #f1e4e4 url('../CustomerImages/brb-logo.png') center / 80% no-repeat;
+  border-radius: 0.25rem;
+}
+
+.booking-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.booking-card__info {
+  min-width: 0;
+  font-size: 0.9375rem;
+}
+
+.booking-card__services {
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: break-word;
+}
+
+.booking-card__description {
+  margin-top: 0.2rem;
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+  line-height: 1.4;
+}
+
+.booking-card__price {
+  margin-top: 0.4rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+}
+
+.booking-card__date,
+.booking-card__time {
+  margin-top: 0.1rem;
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+}
+
+.booking-card__actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: auto;
+}
+
+.booking-card__waiting {
+  font-size: 0.8125rem;
+  font-style: italic;
+  color: var(--color-muted);
+  margin: auto 0 0;
+}
+
+.booking-card__btn {
+  flex: 1;
+  height: 2.2rem;
+  font-size: 0.875rem;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.booking-card__btn--solid {
+  color: #fff;
+  background: var(--color-brand);
+  border: 1.5px solid var(--color-brand);
+}
+
+.booking-card__btn--solid:hover {
+  background: var(--color-brand-hover);
+  border-color: var(--color-brand-hover);
+}
+
+.booking-card__btn--outline {
+  color: var(--color-brand-dark);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-brand);
+}
+
+.booking-card__btn--outline:hover {
+  background: #fde8e8;
+}
+
+/* ── Detail modal ────────────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 100;
+  overflow-y: auto;
+}
+
+.modal {
+  position: relative;
+  width: 100%;
+  max-width: 52rem;
+  max-height: calc(100vh - 3rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin: auto;
+}
+
+.modal__close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--color-ink-soft);
+  background: none;
+  border: none;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.modal__close::before {
+  content: '×';
+}
+
+.modal__close:hover {
+  color: var(--color-brand-dark);
+}
+
+.modal__body {
+  padding: 1.5rem 1.5rem 1.25rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ── Detail view inside modal ──────────────────────────────────────── */
+
+.detail {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.detail__status-banner {
+  grid-column: 1 / -1;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--color-brand);
+  border-radius: var(--radius-sm);
+}
+
+.detail__status-banner--confirmed {
+  background: #1f7a3c;
+}
+
+.detail__status-banner--topay {
+  background: #c47a04;
+}
+
+.detail__status-banner--pending {
+  background: #5a5a7a;
+}
+
+.detail__status-banner--completed {
+  background: #1a5276;
+}
+
+.detail__status-banner--rejected {
+  background: #922b21;
+}
+
+.detail__ref {
+  grid-column: 1 / -1;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-brand-dark);
+  letter-spacing: 0.05em;
+}
+
+.detail__summary {
+  border: 1.5px solid #d1d1d6;
+  border-radius: var(--radius-sm);
+  padding: 1.1rem;
+}
+
+.detail__summary-title {
+  margin-bottom: 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.detail__row {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 0.4rem 1rem;
+  padding: 0.5rem 0;
+  font-size: 0.9375rem;
+  border-top: 1px solid #ebebef;
+}
+
+.detail__row:first-of-type {
+  border-top: none;
+}
+
+.detail__label {
+  color: var(--color-muted);
+}
+
+.detail__downpayment {
+  display: inline-block;
+  margin-top: 0.3rem;
+  padding: 0.15rem 0.65rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--color-brand);
+  border-radius: var(--radius-sm);
+}
+
+.detail__payment-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.detail__gcash-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.6rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  background: #0070e0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: none;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.detail__gcash-btn:hover:not(:disabled) {
+  background: #0057b0;
+}
+
+.detail__gcash-btn:disabled {
+  background: #9ab8d8;
+  cursor: not-allowed;
+}
+
+.detail__proof-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.detail__proof-label {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.detail__proof-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 7rem;
+  padding: 1rem;
+  border: 2px dashed #c1c1c6;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+  position: relative;
+}
+
+.detail__proof-drop:hover,
+.detail__proof-drop.has-file {
+  border-color: var(--color-brand);
+}
+
+.detail__proof-drop input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.detail__proof-icon {
+  width: 1.8rem;
+  height: 1.8rem;
+  background-color: var(--color-muted);
+  -webkit-mask: url('../CustomerImages/icons/upload.svg') center / contain no-repeat;
+  mask: url('../CustomerImages/icons/upload.svg') center / contain no-repeat;
+}
+
+.detail__proof-text {
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.detail__proof-name {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.detail__submit-btn {
+  height: 2.4rem;
+  font-size: 0.9375rem;
+  color: #fff;
+  background: var(--color-brand);
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.detail__submit-btn:hover:not(:disabled) {
+  background: var(--color-brand-hover);
+}
+
+.detail__submit-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.detail__alert {
+  font-size: 0.875rem;
+}
+
+/* ── Voucher ────────────────────────────────────────────────────────── */
+
+.detail__voucher {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.detail__voucher-input {
+  flex: 1;
+  height: 2.4rem;
+  padding: 0 0.75rem;
+  font-size: 0.9375rem;
+  border: 1px solid var(--color-ink);
+  border-radius: var(--radius-sm);
+}
+
+.detail__voucher-input:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 1px;
+}
+
+.detail__voucher-btn {
+  height: 2.4rem;
+  padding: 0 1.1rem;
+  font-size: 0.875rem;
+  color: #fff;
+  background: var(--color-ink-soft);
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.detail__voucher-btn:hover:not(:disabled) {
+  background: var(--color-ink);
+}
+
+.detail__voucher-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* ── Reschedule calendar area ───────────────────────────────────────── */
+
+.detail__reschedule {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  padding: 1.1rem;
+  background: #fafafa;
+  border: 1.5px solid #d1d1d6;
+  border-radius: var(--radius-sm);
+}
+
+.detail__reschedule-title {
+  grid-column: 1 / -1;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+}
+
+.detail__reschedule-time {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+}
+
+.detail__reschedule-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* ── Payment history list ───────────────────────────────────────────── */
+
+.payment-history {
+  grid-column: 1 / -1;
+  margin-top: 0.5rem;
+}
+
+.payment-history__title {
+  margin-bottom: 0.6rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.payment-history__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.payment-history__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  background: #f9f9fb;
+  border-radius: var(--radius-sm);
+  border: 1px solid #ebebef;
+}
+
+.payment-history__item-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.payment-history__type {
+  font-weight: 700;
+}
+
+.payment-history__meta {
+  color: var(--color-muted);
+}
+
+.payment-history__status {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #1a7a3c;
+}
+
+.payment-history__status--pending {
+  color: #c47a04;
+}
+
+.payment-history__status--rejected {
+  color: var(--color-brand-dark);
+}
+
+.detail__modal-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  padding-top: 1rem;
+  border-top: 1px solid #ebebef;
+  margin-top: 0.5rem;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────── */
+
+@media (max-width: 56rem) {
+  .booking-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 44rem) {
+  .detail {
+    grid-template-columns: 1fr;
+  }
+
+  .detail__reschedule {
+    grid-template-columns: 1fr;
+  }
+}
