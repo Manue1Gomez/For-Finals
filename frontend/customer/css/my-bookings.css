@@ -517,6 +517,32 @@
   gap: 0.75rem;
 }
 
+/* ── Reschedule request notice ──────────────────────────────────────── */
+
+.detail__reschedule-notice {
+  grid-column: 1 / -1;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  background: #fff0c2;
+  border: 1.5px solid #ecd27d;
+  border-radius: var(--radius-sm);
+}
+
+.detail__reschedule-notice-title {
+  font-weight: 700;
+}
+
+.detail__reschedule-notice--approved {
+  background: #d4f1c9;
+  border-color: #a9dd95;
+}
+
+.detail__reschedule-notice--rejected {
+  background: #fde0df;
+  border-color: #e8a3a1;
+}
+
 /* ── Payment history list ───────────────────────────────────────────── */
 
 .payment-history {

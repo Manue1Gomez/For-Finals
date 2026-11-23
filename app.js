@@ -11,6 +11,9 @@ const bookingModel = require('./backend/models/bookingModel');
 const blockedDateModel = require('./backend/models/blockedDateModel');
 const paymentModel = require('./backend/models/paymentModel');
 const voucherModel = require('./backend/models/voucherModel');
+const adminModel = require('./backend/models/adminModel');
+const rescheduleModel = require('./backend/models/rescheduleModel');
+const { requireAdmin, requireAdminPage } = require('./backend/middleware/requireAdmin');
 const authRoutes = require('./backend/routes/authRoutes');
 const dashboardRoutes = require('./backend/routes/dashboardRoutes');
 const serviceRoutes = require('./backend/routes/serviceRoutes');
@@ -31,6 +34,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(sessionMiddleware);
+app.use(requireAdminPage);
 app.use(express.static(path.join(__dirname, 'frontend')));
 app.use(
   '/uploads',
@@ -48,6 +52,7 @@ app.use('/api/calendar', calendarRoutes);
 app.use('/api/bookings', customerBookingRoutes);
 app.use('/api/customer', customerDashboardRoutes);
 app.use('/api/contract', contractRoutes);
+app.use('/api/admin', requireAdmin);
 app.use('/api/admin/dashboard', dashboardRoutes);
 app.use('/api/admin/services', adminServiceRoutes);
 app.use('/api/admin/calendar', adminCalendarRoutes);
@@ -85,6 +90,8 @@ app.listen(PORT, async () => {
       ...(await blockedDateModel.verifySchema()),
       ...(await paymentModel.verifySchema()),
       ...(await voucherModel.verifySchema()),
+      ...(await adminModel.verifySchema()),
+      ...(await rescheduleModel.verifySchema()),
     ];
     problems.forEach((problem) => console.warn(`Database warning: ${problem}`));
   } catch (error) {

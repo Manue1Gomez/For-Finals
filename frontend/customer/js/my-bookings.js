@@ -190,6 +190,7 @@ function renderDetail(booking) {
   const canPay = ['To Pay', 'Confirmed'].includes(booking.status) && booking.balance > 0;
   const canVoucher = booking.status === 'To Pay' && !booking.voucherCode;
   const canReschedule = ['To Pay', 'Confirmed'].includes(booking.status);
+  const hasPendingReschedule = booking.rescheduleRequest?.status === 'Pending';
   const paidPercent = booking.totalAmount > 0
     ? Math.round((booking.amountPaid / booking.totalAmount) * 100)
     : 0;
@@ -282,10 +283,12 @@ function renderDetail(booking) {
 
       ${renderPaymentHistory(booking.payments)}
 
+      ${renderRescheduleNotice(booking.rescheduleRequest)}
+
       ${canReschedule ? renderRescheduleSection() : ''}
 
       <div class="detail__modal-actions">
-        ${canReschedule ? `<button class="booking-card__btn booking-card__btn--outline" id="rescheduleToggleBtn" type="button">Reschedule Booking</button>` : ''}
+        ${canReschedule ? `<button class="booking-card__btn booking-card__btn--outline" id="rescheduleToggleBtn" type="button">${hasPendingReschedule ? 'Change Reschedule Request' : 'Reschedule Booking'}</button>` : ''}
         <button class="booking-card__btn booking-card__btn--outline" style="min-width:7rem;" id="closeDetailBtn" type="button">Close</button>
       </div>
     </div>
@@ -353,6 +356,36 @@ function renderPaymentHistory(payments) {
     <div class="payment-history">
       <p class="payment-history__title">Payment History</p>
       <ul class="payment-history__list">${items}</ul>
+    </div>`;
+}
+
+function renderRescheduleNotice(request) {
+  if (!request) return '';
+
+  const requestedSchedule = `${formatLongDate(request.newDate)}, ${formatTime(request.newStartTime)} - ${formatTime(request.newEndTime)}`;
+
+  const notices = {
+    Pending: {
+      title: 'Reschedule request pending',
+      text: `You asked to move this booking to ${requestedSchedule}. Waiting for owner's approval.`,
+    },
+    Approved: {
+      title: 'Reschedule request approved',
+      text: `Your booking was moved to ${requestedSchedule}.`,
+    },
+    Rejected: {
+      title: 'Reschedule request declined',
+      text: 'The owner could not move your booking. It keeps its current schedule.',
+    },
+  };
+
+  const notice = notices[request.status];
+  if (!notice) return '';
+
+  return `
+    <div class="detail__reschedule-notice detail__reschedule-notice--${request.status.toLowerCase()}">
+      <p class="detail__reschedule-notice-title">${notice.title}</p>
+      <p>${notice.text}</p>
     </div>`;
 }
 
@@ -606,11 +639,9 @@ async function submitReschedule(bookingId) {
     });
 
     if (ok) {
-      alertEl.textContent = 'Reschedule request sent. Waiting for owner\'s approval.';
-      alertEl.className = 'form-alert form-alert--success detail__alert';
-      alertEl.hidden = false;
-      btn.textContent = 'Request Sent';
+      // Reload the detail view so the pending request notice appears
       loadBookings(activeStatus);
+      openDetailModal(bookingId);
     } else {
       alertEl.textContent = data.errors?.newDate ?? data.errors?.newStartTime ?? data.message ?? 'Could not submit request.';
       alertEl.className = 'form-alert form-alert--error detail__alert';

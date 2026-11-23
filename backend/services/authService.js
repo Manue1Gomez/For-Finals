@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const customerModel = require('../models/customerModel');
+const adminModel = require('../models/adminModel');
 const AppError = require('./appError');
 
 const SALT_ROUNDS = 10;
@@ -7,6 +8,9 @@ const MYSQL_DUPLICATE_ENTRY = 'ER_DUP_ENTRY';
 
 const LOGIN_PAGE = '/customer/html/login.html';
 const CUSTOMER_HOME = '/customer/html/home.html';
+const ADMIN_HOME = '/admin/html/dashboard.html';
+
+const ROLE = Object.freeze({ ADMIN: 'admin', CUSTOMER: 'customer' });
 
 const NAME_PATTERN = /^\p{L}[\p{L} .'-]*$/u;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -82,6 +86,15 @@ function toPublicProfile(customer) {
   };
 }
 
+function toAdminProfile(admin) {
+  return {
+    id: admin.id,
+    firstName: admin.firstName,
+    lastName: admin.lastName,
+    email: admin.email,
+  };
+}
+
 const emailTakenError = () =>
   new AppError('This email is already registered.', 409, {
     email: 'This email is already registered.',
@@ -108,7 +121,7 @@ async function registerCustomer(body) {
   }
 }
 
-async function authenticateCustomer(body = {}) {
+function readCredentials(body = {}) {
   const email = asText(body.email).trim().toLowerCase();
   const password = asText(body.password);
 
@@ -119,17 +132,36 @@ async function authenticateCustomer(body = {}) {
     throw new AppError('Please enter your email address and password.', 400, errors);
   }
 
+  return { email, password };
+}
+
+const invalidLoginError = () => new AppError('Invalid email or password.', 401);
+
+// One login form serves both roles: the admin table is checked first, then the customer table.
+async function authenticateUser(body) {
+  const { email, password } = readCredentials(body);
+
+  const admin = await adminModel.findByEmail(email);
+
+  if (admin) {
+    if (!(await bcrypt.compare(password, admin.passwordHash))) throw invalidLoginError();
+
+    return { role: ROLE.ADMIN, profile: toAdminProfile(admin), redirectTo: ADMIN_HOME };
+  }
+
   const customer = await customerModel.findByEmail(email);
   const passwordMatches = await bcrypt.compare(password, customer ? customer.passwordHash : DUMMY_HASH);
 
-  if (!customer || !passwordMatches) throw new AppError('Invalid email or password.', 401);
+  if (!customer || !passwordMatches) throw invalidLoginError();
 
-  return toPublicProfile(customer);
+  return { role: ROLE.CUSTOMER, profile: toPublicProfile(customer), redirectTo: CUSTOMER_HOME };
 }
 
 module.exports = {
   LOGIN_PAGE,
   CUSTOMER_HOME,
+  ADMIN_HOME,
+  ROLE,
   registerCustomer,
-  authenticateCustomer,
+  authenticateUser,
 };

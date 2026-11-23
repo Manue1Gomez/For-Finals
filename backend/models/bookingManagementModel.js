@@ -202,6 +202,13 @@ async function update(connection, id, { status, eventDate, startTime, endTime, e
   );
 }
 
+async function setSchedule(connection, id, { eventDate, startTime, endTime }) {
+  await connection.query(
+    'UPDATE booking SET event_date = ?, start_time = ?, end_time = ? WHERE booking_id = ?',
+    [eventDate, `${startTime}:00`, `${endTime}:00`, id]
+  );
+}
+
 async function remove(id) {
   const [result] = await pool.query('DELETE FROM booking WHERE booking_id = ?', [id]);
   return result.affectedRows > 0;
@@ -219,5 +226,6 @@ module.exports = {
   addToPaid,
   setStatus,
   update,
+  setSchedule,
   remove,
 };

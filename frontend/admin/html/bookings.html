@@ -84,10 +84,10 @@
 
     <div class="sidebar__footer">
       <a class="sidebar__new-booking" href="new-booking.html">New Booking</a>
-      <a class="sidebar__logout" href="../../customer/html/login.html">
+      <button class="sidebar__logout" type="button" data-logout>
         <span class="sidebar__logout-icon" aria-hidden="true"></span>
         Logout
-      </a>
+      </button>
     </div>
   </aside>
 
@@ -121,8 +121,7 @@
     </section>
 
     <div class="status-tabs" id="statusTabs" role="group" aria-label="Filter by status">
-      <button class="status-tab status-tab--active" type="button" data-status="all" aria-pressed="true">All <span class="status-tab__count">0</span></button>
-      <button class="status-tab" type="button" data-status="Pending" aria-pressed="false">Pending <span class="status-tab__count">0</span></button>
+      <button class="status-tab status-tab--active" type="button" data-status="Pending" aria-pressed="true">Pending <span class="status-tab__count">0</span></button>
       <button class="status-tab" type="button" data-status="To Pay" aria-pressed="false">To Pay <span class="status-tab__count">0</span></button>
       <button class="status-tab" type="button" data-status="Confirmed" aria-pressed="false">Confirmed <span class="status-tab__count">0</span></button>
       <button class="status-tab" type="button" data-status="Completed" aria-pressed="false">Completed <span class="status-tab__count">0</span></button>
@@ -193,57 +192,10 @@
       <div class="dialog__actions">
         <button class="btn" type="button" data-dialog-close>Close</button>
         <button class="btn" type="button" id="viewContractButton"><span class="btn__icon btn__icon--file" aria-hidden="true"></span>Contract</button>
-        <button class="btn btn--primary" type="button" id="viewUpdateButton"><span class="btn__icon btn__icon--edit" aria-hidden="true"></span>Update</button>
       </div>
     </div>
   </dialog>
 
-  <dialog class="dialog" id="updateDialog" aria-labelledby="updateTitle">
-    <form class="dialog__form" id="updateForm" novalidate>
-      <div>
-        <p class="dialog__eyebrow" id="updateReference"></p>
-        <h2 class="dialog__title" id="updateTitle">Update booking</h2>
-      </div>
-      <p class="alert alert--error" role="alert" hidden></p>
-
-      <div class="field">
-        <label class="field__label" for="updateStatus">Status</label>
-        <select class="field__input" id="updateStatus" name="status"></select>
-        <p class="field__hint" id="updateStatusHint"></p>
-        <p class="field__error" hidden></p>
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label class="field__label" for="updateDate">Event date</label>
-          <input class="field__input" id="updateDate" name="eventDate" type="date" required>
-          <p class="field__error" hidden></p>
-        </div>
-        <div class="field">
-          <label class="field__label" for="updateStart">Start time</label>
-          <input class="field__input" id="updateStart" name="startTime" type="time" required>
-          <p class="field__error" hidden></p>
-        </div>
-        <div class="field">
-          <label class="field__label" for="updateEnd">End time</label>
-          <input class="field__input" id="updateEnd" name="endTime" type="time" required>
-          <p class="field__error" hidden></p>
-        </div>
-      </div>
-      <p class="field__hint" id="updateScheduleHint"></p>
-
-      <div class="field">
-        <label class="field__label" for="updateAddress">Event address (optional)</label>
-        <textarea class="field__input" id="updateAddress" name="eventAddress" rows="2" maxlength="255"></textarea>
-        <p class="field__error" hidden></p>
-      </div>
-
-      <div class="dialog__actions">
-        <button class="btn" type="button" data-dialog-close>Cancel</button>
-        <button class="btn btn--primary" type="submit" id="saveUpdateButton">Save changes</button>
-      </div>
-    </form>
-  </dialog>
 
   <dialog class="dialog" id="confirmDialog" aria-labelledby="confirmTitle">
     <div class="dialog__form">
@@ -293,13 +245,13 @@
         <div class="row-actions row-actions--nowrap">
           <button class="btn btn--sm" type="button" data-action="view"><span class="btn__icon btn__icon--eye" aria-hidden="true"></span>View</button>
           <button class="icon-button icon-button--contract" type="button" data-action="contract" title="Contract"></button>
-          <button class="icon-button icon-button--update" type="button" data-action="update" title="Update"></button>
           <button class="icon-button icon-button--danger icon-button--delete" type="button" data-action="delete" title="Delete"></button>
         </div>
       </td>
     </tr>
   </template>
 
+  <script type="module" src="../js/admin-session.js"></script>
   <script type="module" src="../js/bookings.js"></script>
 </body>
 </html>

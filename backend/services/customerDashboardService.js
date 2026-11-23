@@ -1,10 +1,11 @@
 const AppError = require('./appError');
 const { pool, withTransaction } = require('../config/db');
 const { BOOKING_STATUS } = require('../config/bookingStatus');
-const { SCHEDULE_CONFLICT_STATUSES, BOOKING_HOURS } = require('../config/bookingRules');
+const { RESCHEDULABLE_STATUSES, SCHEDULE_CONFLICT_STATUSES, BOOKING_HOURS } = require('../config/bookingRules');
 const blockedDateModel = require('../models/blockedDateModel');
 const bookingManagementModel = require('../models/bookingManagementModel');
 const customerDashboardModel = require('../models/customerDashboardModel');
+const rescheduleModel = require('../models/rescheduleModel');
 const paymentModel = require('../models/paymentModel');
 const customerModel = require('../models/customerModel');
 const { splitServices } = require('../models/bookingSql');
@@ -109,9 +110,10 @@ async function getBookingDetails(customerId, rawId) {
   const booking = await customerDashboardModel.findOneByCustomer(customerId, id);
   if (!booking) throw new AppError('Booking not found.', 404);
 
-  const [services, payments] = await Promise.all([
+  const [services, payments, rescheduleRequest] = await Promise.all([
     customerDashboardModel.findServicesByBooking(id),
     paymentModel.findByBooking(id),
+    rescheduleModel.findLatestByBooking(id),
   ]);
 
   const totalCents = toCents(booking.totalAmount);
@@ -144,6 +146,7 @@ async function getBookingDetails(customerId, rawId) {
       submittedAt: p.submittedAt,
       reviewedAt: p.reviewedAt,
     })),
+    rescheduleRequest: rescheduleRequest || null,
   };
 }
 
@@ -283,7 +286,7 @@ async function requestReschedule(customerId, rawBookingId, body) {
 
     if (!booking || booking.customerId !== customerId) throw new AppError('Booking not found.', 404);
 
-    if (!['To Pay', 'Confirmed'].includes(booking.status)) {
+    if (!RESCHEDULABLE_STATUSES.includes(booking.status)) {
       throw new AppError('Only confirmed or awaiting-payment bookings can be rescheduled.', 409);
     }
 
@@ -303,6 +306,12 @@ async function requestReschedule(customerId, rawBookingId, body) {
         409,
         { newDate: 'Modeling Workshop can only be rescheduled by the studio owner.' }
       );
+    }
+
+    if (newDate === booking.eventDate && newStartTime === booking.startTime && newEndTime === booking.endTime) {
+      throw new AppError('Choose a different date or time from your current schedule.', 400, {
+        newDate: 'Choose a different date or time from your current schedule.',
+      });
     }
 
     // Check availability
@@ -327,34 +336,18 @@ async function requestReschedule(customerId, rawBookingId, body) {
       });
     }
 
-    // Store the reschedule request in a dedicated table
-    const [[existing]] = await connection.query(
-      "SELECT request_id FROM reschedule_request WHERE booking_id = ? AND status = 'Pending'",
-      [bookingId]
-    );
+    // One open request per booking: a new submission replaces the pending one
+    const requested = { date: newDate, startTime: newStartTime, endTime: newEndTime };
+    const pendingId = await rescheduleModel.findPendingIdByBooking(connection, bookingId);
 
-    if (existing) {
-      await connection.query(
-        `UPDATE reschedule_request
-            SET new_date = ?, new_start_time = ?, new_end_time = ?
-          WHERE request_id = ?`,
-        [newDate, `${newStartTime}:00`, `${newEndTime}:00`, existing.request_id]
-      );
+    if (pendingId) {
+      await rescheduleModel.updatePending(connection, pendingId, requested);
     } else {
-         await connection.query(
-        `INSERT INTO reschedule_request
-           (booking_id, old_date, old_start_time, old_end_time, new_date, new_start_time, new_end_time)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          bookingId,
-          booking.eventDate,
-          `${booking.startTime}:00`,
-          `${booking.endTime}:00`,
-          newDate,
-          `${newStartTime}:00`,
-          `${newEndTime}:00`,
-        ]
-      );
+      await rescheduleModel.create(connection, {
+        bookingId,
+        old: { date: booking.eventDate, startTime: booking.startTime, endTime: booking.endTime },
+        requested,
+      });
     }
 
     return { bookingId, newDate, newStartTime, newEndTime, rescheduleStatus: 'Pending' };
