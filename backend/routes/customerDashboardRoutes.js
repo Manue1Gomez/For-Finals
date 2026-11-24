@@ -13,6 +13,7 @@ router.get('/bookings/:id', ctrl.getBookingDetails);
 
 // Payment proof upload
 router.post('/bookings/:id/payment', uploadSingleImage('proof'), ctrl.submitPayment);
+router.post('/bookings/:id/gcash', ctrl.startGCashPayment);
 
 // Apply voucher to a booking
 router.post('/bookings/:id/voucher', ctrl.applyVoucher);

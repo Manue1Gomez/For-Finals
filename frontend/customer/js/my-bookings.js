@@ -2,7 +2,6 @@ import { getJson, postJson } from './api.js';
 import { startAccountPage } from './account-page.js';
 import { createCalendar } from './calendar-grid.js';
 import { formatLongDate, formatPeso, formatTime } from './format.js';
-import { showAlert } from './form-helpers.js';
 
 const API_BASE = '/api/customer';
 
@@ -261,7 +260,7 @@ function renderDetail(booking) {
         <p class="form-alert detail__alert" id="paymentAlert" role="alert" hidden></p>
 
         <div class="detail__gcash-section">
-          <p class="detail__proof-label">Pay via GCash (auto-verified):</p>
+          <p class="detail__proof-label">Pay via GCash through NetCorePay. Payment is verified automatically.</p>
           <button class="detail__gcash-btn" id="payGCash" type="button">
             Pay with GCash
           </button>
@@ -490,7 +489,7 @@ function bindRescheduleCalendar(bookingId) {
 
 // ─── API actions ──────────────────────────────────────────────────────────────
 
-// ─── GCash via Xendit ────────────────────────────────────────────────────────
+// ─── GCash via NetCorePay ────────────────────────────────────────────────────
 
 async function payWithGCash(bookingId) {
   const alertEl = document.getElementById('paymentAlert');
@@ -500,7 +499,7 @@ async function payWithGCash(bookingId) {
 
   alertEl.hidden = true;
   btn.disabled = true;
-  btn.textContent = 'Redirecting to GCash...';
+  btn.textContent = 'Opening NetCorePay...';
 
   try {
     const res = await fetch(`${API_BASE}/bookings/${bookingId}/gcash`, {
@@ -510,7 +509,6 @@ async function payWithGCash(bookingId) {
     const data = await res.json().catch(() => ({}));
 
     if (res.ok && data.checkoutUrl) {
-      // Redirect the browser to the Xendit GCash checkout page
       window.location.href = data.checkoutUrl;
     } else {
       alertEl.textContent = data.message ?? 'Could not start GCash payment. Please try again.';
@@ -691,22 +689,35 @@ async function init() {
   const customer = await startAccountPage();
   if (!customer) return;
 
-  // Show feedback when customer returns from GCash checkout
   const params = new URLSearchParams(window.location.search);
   const gcashResult = params.get('gcash');
+  const bookingId = Number(params.get('booking'));
+  const paymentId = params.get('payment');
   if (gcashResult) {
-    const messages = {
-      success:   'GCash payment submitted! Your booking will be confirmed shortly.',
-      failed:    'GCash payment failed. Please try again.',
-      cancelled: 'GCash payment was cancelled.',
-    };
-    const msg = messages[gcashResult];
-    if (msg) showAlert(msg, gcashResult === 'success' ? 'success' : 'error');
-    // Clean the URL so a page refresh doesn't re-show the toast
     history.replaceState(null, '', window.location.pathname);
   }
 
-  loadBookings('');
+  await loadBookings('');
+
+  if (gcashResult === 'returned' && Number.isInteger(bookingId) && bookingId > 0) {
+    await openDetailModal(bookingId);
+    const alertEl = document.getElementById('paymentAlert');
+    const payment = openDetail?.payments?.find((entry) => String(entry.id) === paymentId);
+
+    if (alertEl) {
+      alertEl.textContent = payment?.status === 'Verified'
+        ? 'NetCorePay confirmed your GCash payment.'
+        : payment?.status === 'Rejected'
+          ? 'The GCash payment was not completed. You can try again.'
+          : 'Checkout returned. Waiting for NetCorePay payment confirmation; refresh this booking shortly.';
+      alertEl.className = payment?.status === 'Verified'
+        ? 'form-alert form-alert--success detail__alert'
+        : payment?.status === 'Rejected'
+          ? 'form-alert form-alert--error detail__alert'
+          : 'form-alert form-alert--pending detail__alert';
+      alertEl.hidden = false;
+    }
+  }
 }
 
 init();

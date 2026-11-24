@@ -1,7 +1,3 @@
--- Stores the accounts that are allowed to open the admin side of the system.
--- Only emails found in this table can log in as administrator.
--- Run this in phpMyAdmin, then change the sample password right away.
--- (To add more admins safely, use:  node create-admin.js <email> <password> "<first name>" "<last name>")
 
 CREATE TABLE IF NOT EXISTS admin (
   admin_id    INT          NOT NULL AUTO_INCREMENT,

@@ -28,10 +28,13 @@ const adminRescheduleRoutes = require('./backend/routes/adminRescheduleRoutes');
 const customerBookingRoutes = require('./backend/routes/customerBookingRoutes');
 const customerDashboardRoutes = require('./backend/routes/customerDashboardRoutes');
 const contractRoutes = require('./backend/routes/contractRoutes');
+const webhookRoutes = require('./backend/routes/webhookRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// NetCorePay webhook needs the raw request body, so it must be mounted before express.json().
+app.use('/api/webhooks', webhookRoutes);
 app.use(express.json());
 app.use(sessionMiddleware);
 app.use(requireAdminPage);

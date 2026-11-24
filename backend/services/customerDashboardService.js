@@ -12,6 +12,7 @@ const { splitServices } = require('../models/bookingSql');
 const { toCents, fromCents } = require('./money');
 const { requiredDownpaymentCents } = require('./paymentRules');
 const { formatTimeRange, timeTextToMinutes, isValidIsoDate, todayIso } = require('./timeHelper');
+const netcorepayService = require('./netcorepayService');
 const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
@@ -196,6 +197,172 @@ async function submitPayment(customerId, rawBookingId, file) {
       proofUrl,
     };
   });
+}
+
+function getAppBaseUrl() {
+  const configuredUrl = process.env.APP_BASE_URL;
+  if (!configuredUrl) {
+    throw new AppError('GCash payments are not configured. Please contact the studio.', 503);
+  }
+
+  let url;
+  try {
+    url = new URL(configuredUrl);
+  } catch {
+    throw new AppError('GCash payments are not configured. Please contact the studio.', 503);
+  }
+
+  const localHost = ['localhost', '127.0.0.1'].includes(url.hostname);
+  if (
+    !['http:', 'https:'].includes(url.protocol) ||
+    (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') ||
+    (!localHost && url.protocol !== 'https:') ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash
+  ) {
+    throw new AppError('GCash payments are not configured. Please contact the studio.', 503);
+  }
+
+  return url.origin;
+}
+
+function isLocalCheckoutKey(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || '');
+}
+
+async function startGCashPayment(customerId, rawBookingId) {
+  const bookingId = parseBookingId(rawBookingId);
+  const appBaseUrl = getAppBaseUrl();
+
+  if (!netcorepayService.isConfigured()) {
+    throw new AppError('GCash payments are not configured. Please contact the studio.', 503);
+  }
+
+  const intent = await withTransaction(async (connection) => {
+    const booking = await bookingManagementModel.lockById(connection, bookingId);
+    if (!booking || booking.customerId !== customerId) throw new AppError('Booking not found.', 404);
+    if (!['To Pay', 'Confirmed'].includes(booking.status)) {
+      throw new AppError('Payment cannot be started for this booking.', 409);
+    }
+
+    const totalCents = toCents(booking.totalAmount);
+    const paidCents = toCents(booking.amountPaid);
+    const remainingCents = totalCents - paidCents;
+    if (remainingCents <= 0) throw new AppError('This booking is already fully paid.', 409);
+
+    const type = paidCents === 0 ? 'Downpayment' : 'Balance';
+    const amountCents = paidCents === 0 ? requiredDownpaymentCents(totalCents) : remainingCents;
+    const existing = await paymentModel.findPendingForBooking(connection, bookingId);
+
+    if (existing) {
+      const localKey = isLocalCheckoutKey(existing.referenceNumber);
+      const providerPayment = /^pay_[A-Za-z0-9_-]{1,45}$/.test(existing.referenceNumber || '');
+      if (
+        existing.method !== 'GCash' ||
+        (!localKey && !providerPayment) ||
+        toCents(existing.amount) !== amountCents
+      ) {
+        throw new AppError('There is already a payment awaiting verification or completion for this booking.', 409);
+      }
+
+      return {
+        paymentId: existing.id,
+        type: existing.type,
+        amountCents,
+        idempotencyKey: localKey ? existing.referenceNumber : null,
+        providerPaymentId: providerPayment ? existing.referenceNumber : null,
+      };
+    }
+
+    const idempotencyKey = crypto.randomUUID();
+    const paymentId = await paymentModel.createPendingGatewayPayment(connection, {
+      bookingId,
+      type,
+      amount: fromCents(amountCents),
+      idempotencyKey,
+    });
+
+    return { paymentId, type, amountCents, idempotencyKey, providerPaymentId: null };
+  });
+
+  const returnUrl = new URL('/customer/html/my-bookings.html', appBaseUrl);
+  returnUrl.searchParams.set('gcash', 'returned');
+  returnUrl.searchParams.set('booking', String(bookingId));
+  returnUrl.searchParams.set('payment', String(intent.paymentId));
+
+  let payment;
+  try {
+    payment = intent.providerPaymentId
+      ? await netcorepayService.getPayment(intent.providerPaymentId, intent.amountCents)
+      : await netcorepayService.createGCashPayment({
+        amountCents: intent.amountCents,
+        description: `BRB Studio booking ${bookingId} ${intent.type.toLowerCase()}`,
+        returnUrl: returnUrl.toString(),
+        metadata: {
+          booking_id: String(bookingId),
+          payment_record_id: String(intent.paymentId),
+          checkout_key: intent.idempotencyKey,
+        },
+        idempotencyKey: intent.idempotencyKey,
+      });
+  } catch (error) {
+    console.error(`Could not create or retrieve the NetCorePay checkout: ${error.message}`);
+    if (error.status >= 400 && error.status < 500 && error.status !== 429) {
+      await withTransaction((connection) =>
+        paymentModel.markGatewayRejected(
+          connection,
+          intent.paymentId,
+          intent.providerPaymentId || intent.idempotencyKey,
+          'NetCorePay could not create or retrieve the checkout.'
+        )
+      );
+    }
+    throw new AppError('Could not start GCash checkout. Please try again in a moment.', 502);
+  }
+
+  if (intent.providerPaymentId && ['failed', 'expired', 'refunded'].includes(payment.status)) {
+    const reason = payment.status === 'expired'
+      ? 'NetCorePay checkout expired before payment was completed.'
+      : payment.status === 'refunded'
+        ? 'NetCorePay payment was refunded before local confirmation.'
+        : 'NetCorePay reported that the payment failed.';
+    await withTransaction((connection) =>
+      paymentModel.markGatewayRejected(
+        connection,
+        intent.paymentId,
+        intent.providerPaymentId,
+        reason
+      )
+    );
+    throw new AppError('The previous GCash checkout is no longer active. Try again to start a new one.', 409);
+  }
+
+  if (intent.idempotencyKey) {
+    const updated = await withTransaction((connection) =>
+      paymentModel.updateGatewayReference(
+        connection,
+        intent.paymentId,
+        intent.idempotencyKey,
+        payment.id
+      )
+    );
+
+    if (!updated) {
+      const current = await paymentModel.findById(intent.paymentId);
+      if (!current || current.status === 'Rejected') {
+        throw new AppError('This GCash payment is no longer available. Refresh the booking and try again.', 409);
+      }
+    }
+  }
+
+  return {
+    paymentId: intent.paymentId,
+    amount: fromCents(intent.amountCents),
+    checkoutUrl: payment.checkout_url,
+  };
 }
 
 // ─── Apply voucher ────────────────────────────────────────────────────────────
@@ -467,6 +634,7 @@ module.exports = {
   listBookings,
   getBookingDetails,
   submitPayment,
+  startGCashPayment,
   applyVoucher,
   requestReschedule,
   updateProfile,

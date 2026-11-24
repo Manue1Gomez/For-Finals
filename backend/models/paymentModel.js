@@ -52,10 +52,81 @@ async function findPendingForReview() {
        FROM payment p
        JOIN booking b ON b.booking_id = p.booking_id
        JOIN customer c ON c.customer_id = b.customer_id
-      WHERE p.status = 'Pending'
+       WHERE p.status = 'Pending'
+         AND p.reference_number IS NULL
       ORDER BY p.submitted_at, p.payment_id`
   );
   return rows;
+}
+
+async function findPendingForBooking(connection, bookingId) {
+  const [[row]] = await connection.query(
+    `SELECT payment_id AS id,
+             payment_type AS type,
+             amount,
+             method,
+             reference_number AS referenceNumber
+        FROM payment
+       WHERE booking_id = ? AND status = 'Pending'
+       ORDER BY submitted_at, payment_id
+       LIMIT 1
+       FOR UPDATE`,
+    [bookingId]
+  );
+  return row || null;
+}
+
+async function createPendingGatewayPayment(connection, { bookingId, type, amount, idempotencyKey }) {
+  const [result] = await connection.query(
+    `INSERT INTO payment (booking_id, payment_type, amount, method, reference_number, status, submitted_at)
+     VALUES (?, ?, ?, 'GCash', ?, 'Pending', NOW())`,
+    [bookingId, type, amount, idempotencyKey]
+  );
+  return result.insertId;
+}
+
+async function updateGatewayReference(connection, id, idempotencyKey, providerPaymentId) {
+  const [result] = await connection.query(
+    `UPDATE payment
+         SET reference_number = ?
+       WHERE payment_id = ?
+         AND status = 'Pending'
+         AND reference_number = ?`,
+    [providerPaymentId, id, idempotencyKey]
+  );
+  return result.affectedRows > 0;
+}
+
+async function findGatewayByReference(connection, providerPaymentId, idempotencyKey) {
+  const [[row]] = await connection.query(
+    `SELECT ${PAYMENT_FIELDS}
+        FROM payment p
+       WHERE p.reference_number IN (?, ?)
+         AND p.method = 'GCash'
+       ORDER BY (p.reference_number = ?) DESC
+       LIMIT 1
+      `,
+    [providerPaymentId, idempotencyKey || providerPaymentId, providerPaymentId]
+  );
+  return row || null;
+}
+
+async function markGatewayVerified(connection, id, providerPaymentId) {
+  await connection.query(
+    `UPDATE payment
+         SET status = 'Verified', reference_number = ?, reviewed_at = NOW()
+       WHERE payment_id = ? AND status = 'Pending'`,
+    [providerPaymentId, id]
+  );
+}
+
+async function markGatewayRejected(connection, id, providerPaymentId, reason) {
+  await connection.query(
+    `UPDATE payment
+         SET status = 'Rejected', reference_number = ?, reject_reason = ?, reviewed_at = NOW()
+       WHERE payment_id = ? AND status = 'Pending'`,
+    [providerPaymentId, reason, id]
+  );
 }
 
 async function findOutstandingBookings(statuses) {
@@ -91,6 +162,11 @@ async function findForUpdate(connection, id) {
     `SELECT ${PAYMENT_FIELDS} FROM payment p WHERE p.payment_id = ? FOR UPDATE`,
     [id]
   );
+  return row || null;
+}
+
+async function findById(id) {
+  const [[row]] = await pool.query(`SELECT ${PAYMENT_FIELDS} FROM payment p WHERE p.payment_id = ?`, [id]);
   return row || null;
 }
 
@@ -135,9 +211,16 @@ async function verifySchema() {
 
 module.exports = {
   findPendingForReview,
+  findPendingForBooking,
+  createPendingGatewayPayment,
+  updateGatewayReference,
+  findGatewayByReference,
+  markGatewayVerified,
+  markGatewayRejected,
   findOutstandingBookings,
   findBookingId,
   findForUpdate,
+  findById,
   findByBooking,
   insertVerifiedByAdmin,
   markVerified,

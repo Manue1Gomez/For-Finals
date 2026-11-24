@@ -210,6 +210,123 @@ async function rejectPayment(rawId, rawReason) {
   return { id, status: 'Rejected' };
 }
 
+async function handleNetcorepayWebhook(event) {
+  const eventType = event?.type;
+  const providerPayment = event?.data?.object;
+  const terminalStatuses = {
+    'payment.failed': 'failed',
+    'payment.expired': 'expired',
+  };
+  const isSuccess = eventType === 'payment.succeeded';
+  const rejectedStatus = terminalStatuses[eventType];
+
+  if (!isSuccess && !rejectedStatus) return { status: 'ignored' };
+
+  const providerPaymentId = providerPayment?.id;
+  const idempotencyKey = providerPayment?.metadata?.checkout_key;
+  const amountCents = parseAmountToCents(providerPayment?.amount);
+  const expectedStatus = isSuccess ? 'succeeded' : rejectedStatus;
+
+  if (
+    typeof providerPaymentId !== 'string' ||
+    !/^pay_[A-Za-z0-9_-]{1,45}$/.test(providerPaymentId) ||
+    providerPayment?.status !== expectedStatus ||
+    providerPayment?.currency !== 'PHP' ||
+    providerPayment?.method !== 'gcash_qr' ||
+    amountCents === null ||
+    (idempotencyKey !== undefined &&
+      (typeof idempotencyKey !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)))
+  ) {
+    throw new Error('NetCorePay sent an invalid payment event.');
+  }
+
+  const result = await withTransaction(async (connection) => {
+    const matchedPayment = await paymentModel.findGatewayByReference(
+      connection,
+      providerPaymentId,
+      idempotencyKey
+    );
+    if (!matchedPayment) throw new Error(`No local payment matches NetCorePay payment ${providerPaymentId}.`);
+
+    const booking = await bookingManagementModel.lockById(connection, matchedPayment.bookingId);
+    if (!booking) throw new Error(`Booking for payment ${matchedPayment.id} no longer exists.`);
+    const payment = await paymentModel.findForUpdate(connection, matchedPayment.id);
+    if (!payment || payment.referenceNumber !== providerPaymentId && payment.referenceNumber !== idempotencyKey) {
+      throw new Error(`NetCorePay payment ${providerPaymentId} no longer matches the local payment.`);
+    }
+
+    const metadataPaymentId = providerPayment?.metadata?.payment_record_id;
+    if (metadataPaymentId !== undefined && String(payment.id) !== String(metadataPaymentId)) {
+      throw new Error(`NetCorePay payment ${providerPaymentId} has mismatched booking metadata.`);
+    }
+
+    if (payment.status === 'Verified') return { status: 'duplicate' };
+    if (payment.status === 'Rejected' && !isSuccess) return { status: 'duplicate' };
+    if (payment.status !== 'Pending') {
+      return { status: 'terminal', paymentStatus: payment.status };
+    }
+
+    if (
+      payment.method !== 'GCash' ||
+      toCents(payment.amount) !== amountCents ||
+      (providerPayment?.metadata?.booking_id !== undefined &&
+        String(booking.id) !== String(providerPayment.metadata.booking_id))
+    ) {
+      throw new Error(`NetCorePay payment ${providerPaymentId} does not match the local payment.`);
+    }
+
+    if (!isSuccess) {
+      const reason = rejectedStatus === 'expired'
+        ? 'NetCorePay checkout expired before payment was completed.'
+        : 'NetCorePay reported that the payment failed.';
+      await paymentModel.markGatewayRejected(connection, payment.id, providerPaymentId, reason);
+      return { status: 'rejected' };
+    }
+
+    if (!PAYABLE_STATUSES.includes(booking.status)) {
+      throw new Error(`NetCorePay payment ${providerPaymentId} belongs to a non-payable booking.`);
+    }
+
+    const totalCents = toCents(booking.totalAmount);
+    const paidCents = toCents(booking.amountPaid);
+    if (paidCents + amountCents > totalCents) {
+      throw new Error(`NetCorePay payment ${providerPaymentId} exceeds the booking balance.`);
+    }
+
+    const paidAfter = paidCents + amountCents;
+    const statusAfter = statusAfterPayment(booking.status, paidAfter, totalCents);
+
+    await paymentModel.markGatewayVerified(connection, payment.id, providerPaymentId);
+    await bookingManagementModel.addToPaid(connection, booking.id, fromCents(amountCents));
+    if (statusAfter !== booking.status) {
+      await bookingManagementModel.setStatus(connection, booking.id, statusAfter);
+    }
+
+    let outcome = receiptEmailService.OUTCOME.RECEIVED;
+    if (statusAfter !== booking.status) outcome = receiptEmailService.OUTCOME.CONFIRMED;
+    else if (booking.status === BOOKING_STATUS.TO_PAY) {
+      outcome = receiptEmailService.OUTCOME.PARTIAL_DOWNPAYMENT;
+    }
+
+    return { status: 'verified', paymentId: payment.id, bookingId: booking.id, outcome };
+  });
+
+  if (result.status === 'verified') {
+    await sendReceipt({
+      paymentId: result.paymentId,
+      bookingId: result.bookingId,
+      outcome: result.outcome,
+    });
+  } else if (result.status === 'terminal') {
+    console.warn(
+      `Ignoring NetCorePay payment ${providerPaymentId}: local payment is already ${result.paymentStatus}.`
+    );
+  }
+
+  return result;
+}
+
 function readRecordInput(body) {
   const errors = {};
   const markFullyPaid = body.markFullyPaid === true || body.markFullyPaid === 'true';
@@ -243,6 +360,10 @@ async function recordPayment(body = {}) {
 
     if (!PAYABLE_STATUSES.includes(booking.status)) {
       throw new AppError('Payments can only be recorded for accepted bookings.', 409);
+    }
+
+    if (await paymentModel.findPendingForBooking(connection, bookingId)) {
+      throw new AppError('Resolve the pending customer payment before recording another payment.', 409);
     }
 
     const totalCents = toCents(booking.totalAmount);
@@ -280,4 +401,10 @@ async function recordPayment(body = {}) {
   });
 }
 
-module.exports = { getOverview, verifyPayment, rejectPayment, recordPayment };
+module.exports = {
+  getOverview,
+  verifyPayment,
+  rejectPayment,
+  recordPayment,
+  handleNetcorepayWebhook,
+};

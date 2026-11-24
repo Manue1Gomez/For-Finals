@@ -137,3 +137,9 @@
   background: #e8f6e6;
   border-color: #b8e0b2;
 }
+
+.form-alert--pending {
+  color: #5b4b10;
+  background: #fff8df;
+  border-color: #e8d28a;
+}

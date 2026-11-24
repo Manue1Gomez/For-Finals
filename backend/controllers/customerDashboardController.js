@@ -32,6 +32,15 @@ async function submitPayment(req, res, next) {
   }
 }
 
+async function startGCashPayment(req, res, next) {
+  try {
+    const result = await customerDashboardService.startGCashPayment(customerId(req), req.params.id);
+    res.status(201).json(result);
+  } catch (error) {
+    sendError(error, res, next);
+  }
+}
+
 async function applyVoucher(req, res, next) {
   try {
     const result = await customerDashboardService.applyVoucher(customerId(req), req.params.id, req.body?.voucherCode);
@@ -81,6 +90,7 @@ module.exports = {
   listBookings,
   getBookingDetails,
   submitPayment,
+  startGCashPayment,
   applyVoucher,
   requestReschedule,
   getProfile,
