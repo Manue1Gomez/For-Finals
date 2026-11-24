@@ -25,6 +25,9 @@ const adminBookingRoutes = require('./backend/routes/adminBookingRoutes');
 const adminReportRoutes = require('./backend/routes/adminReportRoutes');
 const adminVoucherRoutes = require('./backend/routes/adminVoucherRoutes');
 const adminRescheduleRoutes = require('./backend/routes/adminRescheduleRoutes');
+const adminClientRoutes = require('./backend/routes/adminClientRoutes');
+const adminWalkInRoutes = require('./backend/routes/adminWalkInRoutes');
+const adminWorkshopRoutes = require('./backend/routes/adminWorkshopRoutes');
 const customerBookingRoutes = require('./backend/routes/customerBookingRoutes');
 const customerDashboardRoutes = require('./backend/routes/customerDashboardRoutes');
 const contractRoutes = require('./backend/routes/contractRoutes');
@@ -64,6 +67,9 @@ app.use('/api/admin/bookings', adminBookingRoutes);
 app.use('/api/admin/reports', adminReportRoutes);
 app.use('/api/admin/vouchers', adminVoucherRoutes);
 app.use('/api/admin/reschedule', adminRescheduleRoutes);
+app.use('/api/admin/clients', adminClientRoutes);
+app.use('/api/admin/walk-in', adminWalkInRoutes);
+app.use('/api/admin/workshop-students', adminWorkshopRoutes);
 
 app.use('/api', (req, res) => {
   res.status(404).json({ message: 'Endpoint not found.' });

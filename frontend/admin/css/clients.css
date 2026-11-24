@@ -1,0 +1,300 @@
+/* ── Top navigation: Clients | Modeling Workshop Students ─────────────── */
+
+.page-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.25rem;
+  border-bottom: var(--border-panel);
+}
+
+.page-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: -1.5px;
+  padding: 0.7rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-muted);
+  border-bottom: 3px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.page-tab:hover {
+  color: var(--color-ink);
+}
+
+.page-tab:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: -2px;
+}
+
+.page-tab--active,
+.page-tab--active:hover {
+  font-weight: 600;
+  color: var(--color-brand-dark);
+  border-bottom-color: var(--color-brand);
+}
+
+.page-tab__count {
+  min-width: 1.4rem;
+  padding: 0 0.4rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.4rem;
+  text-align: center;
+  color: var(--color-ink);
+  background: #e4e4e8;
+  border-radius: 999px;
+}
+
+.page-tab--active .page-tab__count {
+  color: #fff;
+  background: var(--color-brand);
+}
+
+/* ── Summary cards ───────────────────────────────────────────────────── */
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1.1rem;
+}
+
+.summary-card__label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.summary-card__value {
+  font-family: var(--font-display);
+  font-size: 2.25rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Search and sort ─────────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-md);
+}
+
+.toolbar__search {
+  position: relative;
+  flex: 1 1 18rem;
+}
+
+.toolbar__search-icon {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  width: 1.05rem;
+  height: 1.05rem;
+  background-color: var(--color-muted);
+  transform: translateY(-50%);
+  -webkit-mask: url('../AdminImages/icons/search.svg') center / contain no-repeat;
+  mask: url('../AdminImages/icons/search.svg') center / contain no-repeat;
+}
+
+.toolbar__search-input {
+  padding-left: 2.4rem;
+}
+
+.toolbar__select {
+  flex: 0 1 13rem;
+}
+
+.toolbar__clear {
+  font-size: 0.8125rem;
+  color: var(--color-brand-dark);
+  text-decoration: underline;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────── */
+
+.client-table td,
+.student-table td {
+  padding: 0.8rem 0.75rem;
+}
+
+.client-table__client,
+.client-table__bookings,
+.student-table__student,
+.student-table__services,
+.student-table__schedule,
+.student-table__payment {
+  line-height: 1.45;
+}
+
+.client-table__name,
+.client-table__email,
+.client-table__total,
+.client-table__completed,
+.student-table__name,
+.student-table__reference,
+.student-table__date,
+.student-table__time,
+.student-table__amounts,
+.student-table__payment-label {
+  display: block;
+}
+
+.client-table__email,
+.client-table__completed,
+.student-table__reference,
+.student-table__time,
+.student-table__payment-label {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.student-table__name,
+.student-table__date,
+.student-table__time {
+  white-space: nowrap;
+}
+
+.client-table__total {
+  font-size: 1rem;
+}
+
+.client-table__paid {
+  font-variant-numeric: tabular-nums;
+}
+
+.student-table__payment {
+  min-width: 9rem;
+}
+
+.student-table__payment .progress {
+  margin: 0.3rem 0;
+}
+
+.tag--workshop {
+  color: #7a1c1e;
+  background: var(--color-brand-tint);
+}
+
+.tag--bundled {
+  color: #7a5a00;
+  background: #fff0c2;
+}
+
+.row-actions--center {
+  justify-content: center;
+}
+
+.list-status {
+  padding: 2rem 0;
+  text-align: center;
+}
+
+/* ── Pagination ──────────────────────────────────────────────────────── */
+
+.list-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.list-pagination__summary {
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+}
+
+.list-pagination__buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ── Dialogs ─────────────────────────────────────────────────────────── */
+
+.dialog--profile {
+  width: min(44rem, calc(100% - 2rem));
+}
+
+.dialog__eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-brand-dark);
+}
+
+.dialog__section-title {
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.profile-stat {
+  padding: 0.6rem 0.8rem;
+  background: #f6f6f8;
+  border-radius: var(--radius-sm);
+}
+
+.profile-stat__label {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.profile-stat__value {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.history-table td,
+.history-table th {
+  padding: 0.55rem 0.6rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+@media (max-width: 52rem) {
+  .summary-cards,
+  .profile-stats,
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-tab {
+    padding-inline: 0.75rem;
+    font-size: 0.8125rem;
+  }
+}
