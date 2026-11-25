@@ -1,0 +1,516 @@
+/* ── Step indicator ──────────────────────────────────────────── */
+
+.nb-steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 1.5rem;
+  counter-reset: none;
+}
+
+.nb-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.nb-step::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: var(--color-line);
+  margin-left: 0.5rem;
+}
+
+.nb-step:last-child::after {
+  display: none;
+}
+
+.nb-step__num {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #e4e4e8;
+  border-radius: 50%;
+}
+
+.nb-step--active {
+  color: var(--color-ink);
+}
+
+.nb-step--active .nb-step__num {
+  color: #fff;
+  background: var(--color-brand);
+}
+
+.nb-step--done .nb-step__num {
+  color: #fff;
+  background: var(--color-success);
+}
+
+.nb-step--done::after {
+  background: var(--color-success);
+}
+
+/* ── Card wrapper ────────────────────────────────────────────── */
+
+.nb-card {
+  max-width: 42rem;
+}
+
+/* ── Panel (each step) ───────────────────────────────────────── */
+
+.nb-panel {
+  padding: 1.75rem 1.75rem 1.5rem;
+}
+
+.nb-panel__title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 400;
+  margin-bottom: 0.3rem;
+}
+
+.nb-panel__sub {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+  margin-bottom: 1.25rem;
+}
+
+/* ── Customer type cards ─────────────────────────────────────── */
+
+.nb-type-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.nb-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 1.25rem 1rem;
+  font-size: 0.875rem;
+  text-align: left;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s, background 0.15s;
+  cursor: pointer;
+}
+
+.nb-type-card strong {
+  font-size: 1rem;
+}
+
+.nb-type-card span {
+  color: var(--color-muted);
+}
+
+.nb-type-card:hover {
+  border-color: var(--color-brand);
+  background: var(--color-brand-tint);
+}
+
+.nb-type-card__icon {
+  width: 2rem;
+  height: 2rem;
+  background-color: var(--color-brand);
+  margin-bottom: 0.25rem;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.nb-type-card__icon--existing { --icon: url('../AdminImages/icons/clients.svg'); }
+.nb-type-card__icon--new      { --icon: url('../AdminImages/icons/edit.svg'); }
+
+/* ── Form body ───────────────────────────────────────────────── */
+
+.nb-form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.field-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.field-row-3 {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.nb-optional {
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+/* ── Found customer card ─────────────────────────────────────── */
+
+.nb-found-customer {
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-sm);
+}
+
+.nb-found-customer__name {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.nb-found-customer__meta {
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+  margin-top: 0.2rem;
+}
+
+/* ── Service grid ────────────────────────────────────────────── */
+
+.nb-service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.nb-service-card {
+  position: relative;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.8125rem;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+}
+
+.nb-service-card:hover {
+  border-color: var(--color-brand);
+  background: var(--color-brand-tint);
+}
+
+.nb-service-card--selected {
+  border-color: var(--color-brand);
+  background: var(--color-brand-tint);
+}
+
+.nb-service-card--selected::after {
+  content: '✓';
+  position: absolute;
+  top: 0.4rem;
+  right: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-brand);
+}
+
+.nb-service-card__name {
+  display: block;
+  font-weight: 600;
+}
+
+.nb-service-card__price {
+  display: block;
+  color: var(--color-muted);
+  margin-top: 0.15rem;
+}
+
+/* ── Order summary ───────────────────────────────────────────── */
+
+.nb-summary {
+  padding: 0.9rem 1rem;
+}
+
+.nb-summary__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin-bottom: 0.6rem;
+}
+
+.nb-summary__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.nb-summary__table td {
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.nb-summary__table td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.nb-summary__table tfoot td {
+  border-bottom: none;
+}
+
+.nb-summary__total td {
+  font-weight: 700;
+  padding-top: 0.5rem;
+  border-top: 2px solid var(--color-ink-soft);
+}
+
+/* ── DP info box ─────────────────────────────────────────────── */
+
+.nb-dp-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.nb-dp-info__label {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  margin-bottom: 0.2rem;
+}
+
+.nb-dp-info__value {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.nb-dp-info__value--highlight {
+  color: var(--color-brand-dark);
+}
+
+/* ── Checkbox ────────────────────────────────────────────────── */
+
+.nb-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.nb-checkbox input {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  accent-color: var(--color-brand);
+}
+
+/* ── Navigation row ──────────────────────────────────────────── */
+
+.nb-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-line);
+}
+
+.nb-nav--center {
+  justify-content: center;
+  border-top: none;
+  margin-top: 1.25rem;
+}
+
+/* ── Success panel ───────────────────────────────────────────── */
+
+.nb-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2.5rem 2rem;
+}
+
+.nb-success__icon {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: 1.5rem;
+  color: #fff;
+  background: var(--color-success);
+  border-radius: 50%;
+  margin-bottom: 1rem;
+}
+
+.nb-success__ref {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-top: 0.4rem;
+}
+
+.nb-success__detail {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+  margin-top: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+
+/* ── Inline calendar ─────────────────────────────────────────── */
+
+.nb-cal {
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-top: 0.4rem;
+  user-select: none;
+}
+
+.nb-cal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.75rem;
+  background: var(--color-table-head);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.nb-cal__nav {
+  width: 1.8rem;
+  height: 1.8rem;
+  font-size: 1.25rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s;
+}
+
+.nb-cal__nav:hover:not(:disabled) {
+  background: rgb(0 0 0 / 0.08);
+}
+
+.nb-cal__nav:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.nb-cal__weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  padding: 0.3rem 0.5rem 0;
+}
+
+.nb-cal__weekdays span {
+  text-align: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+  padding: 0.25rem 0;
+}
+
+.nb-cal__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 0.3rem 0.5rem 0.6rem;
+}
+
+.nb-cal__day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  aspect-ratio: 1;
+  font-size: 0.8125rem;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s;
+}
+
+.nb-cal__day:hover:not(:disabled) {
+  background: var(--color-brand-tint);
+}
+
+.nb-cal__day:disabled {
+  color: var(--color-muted);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nb-cal__day--selected {
+  color: #fff !important;
+  background: var(--color-brand) !important;
+  font-weight: 700;
+}
+
+.nb-cal__day--blocked {
+  background: #f1f1f3;
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+
+.nb-cal__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-brand);
+  flex-shrink: 0;
+}
+
+.nb-cal__day--selected .nb-cal__dot {
+  background: rgba(255,255,255,0.7);
+}
+
+.nb-cal__status {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.nb-cal__legend {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.75rem 0.6rem;
+  font-size: 0.6875rem;
+  color: var(--color-muted);
+}
+
+.nb-cal__legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.nb-cal__legend-dot--booked  { background: var(--color-brand); }
+.nb-cal__legend-dot--blocked { background: #c9cace; }
+
+.nb-cal__selected {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-ink-soft);
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+
+@media (max-width: 40rem) {
+  .nb-type-cards,
+  .field-row-2,
+  .nb-dp-info {
+    grid-template-columns: 1fr;
+  }
+}

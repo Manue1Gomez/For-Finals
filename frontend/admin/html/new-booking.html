@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Booking | BRB Studios Admin</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700&display=swap">
+
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/new-booking.css">
+</head>
+<body class="admin-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar__brand">
+      <img class="sidebar__logo" src="../AdminImages/brb-logo.png" alt="BRB Studios">
+      <p class="sidebar__role">Administrator</p>
+    </div>
+
+    <nav class="sidebar__nav" aria-label="Admin navigation">
+      <ul class="nav-list">
+        <li>
+          <a class="nav-link" href="dashboard.html">
+            <span class="nav-link__icon nav-link__icon--dashboard" aria-hidden="true"></span>
+            Dashboard
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" href="payments.html">
+            <span class="nav-link__icon nav-link__icon--payments" aria-hidden="true"></span>
+            Payments
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" href="bookings.html">
+            <span class="nav-link__icon nav-link__icon--bookings" aria-hidden="true"></span>
+            Bookings
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" href="calendar.html">
+            <span class="nav-link__icon nav-link__icon--calendar" aria-hidden="true"></span>
+            Calendar
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" href="services.html">
+            <span class="nav-link__icon nav-link__icon--services" aria-hidden="true"></span>
+            Services
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" href="clients.html">
+            <span class="nav-link__icon nav-link__icon--clients" aria-hidden="true"></span>
+            Clients
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" href="vouchers.html">
+            <span class="nav-link__icon nav-link__icon--vouchers" aria-hidden="true"></span>
+            Vouchers
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" href="reschedule-requests.html">
+            <span class="nav-link__icon nav-link__icon--reschedule" aria-hidden="true"></span>
+            Rescheduling Requests
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" href="reports.html">
+            <span class="nav-link__icon nav-link__icon--reports" aria-hidden="true"></span>
+            Reports
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <div class="sidebar__footer">
+      <a class="sidebar__new-booking nav-link--active" href="new-booking.html">New Booking</a>
+      <button class="sidebar__logout" type="button" data-logout>
+        <span class="sidebar__logout-icon" aria-hidden="true"></span>
+        Logout
+      </button>
+    </div>
+  </aside>
+
+  <main class="admin-main">
+    <header class="page-header">
+      <p class="page-header__eyebrow">Operations</p>
+      <h1 class="page-header__title">New Walk-in Booking</h1>
+      <p class="page-header__subtitle">Record a walk-in client's booking and downpayment in one go.</p>
+    </header>
+
+    <!-- Step indicator -->
+    <ol class="nb-steps" id="stepIndicator" aria-label="Booking steps">
+      <li class="nb-step nb-step--active" data-step="1">
+        <span class="nb-step__num">1</span>
+        <span class="nb-step__label">Customer</span>
+      </li>
+      <li class="nb-step" data-step="2">
+        <span class="nb-step__num">2</span>
+        <span class="nb-step__label">Details</span>
+      </li>
+      <li class="nb-step" data-step="3">
+        <span class="nb-step__num">3</span>
+        <span class="nb-step__label">Booking</span>
+      </li>
+      <li class="nb-step" data-step="4">
+        <span class="nb-step__num">4</span>
+        <span class="nb-step__label">Payment</span>
+      </li>
+    </ol>
+
+    <div class="nb-card panel">
+
+      <!-- ── STEP 1 · Customer type ──────────────────────────── -->
+      <section class="nb-panel" id="step1" aria-labelledby="step1Title">
+        <h2 class="nb-panel__title" id="step1Title">Is this a registered or new client?</h2>
+        <p class="nb-panel__sub">Choose how to look up or create the client account.</p>
+
+        <div class="nb-type-cards">
+          <button class="nb-type-card" type="button" data-type="existing">
+            <span class="nb-type-card__icon nb-type-card__icon--existing" aria-hidden="true"></span>
+            <strong>Registered client</strong>
+            <span>Look up an existing account by email.</span>
+          </button>
+          <button class="nb-type-card" type="button" data-type="new">
+            <span class="nb-type-card__icon nb-type-card__icon--new" aria-hidden="true"></span>
+            <strong>New client</strong>
+            <span>Create an account as part of this booking.</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ── STEP 2a · Look up existing customer ───────────────── -->
+      <section class="nb-panel" id="step2existing" hidden aria-labelledby="step2exTitle">
+        <h2 class="nb-panel__title" id="step2exTitle">Find registered client</h2>
+        <p class="nb-panel__sub">Enter the client's email address to pull up their account.</p>
+
+        <div class="nb-form-body">
+          <p class="alert alert--error" id="lookupError" role="alert" hidden></p>
+
+          <div class="field">
+            <label class="field__label" for="lookupEmail">Email address</label>
+            <input class="field__input" id="lookupEmail" type="email" autocomplete="email" placeholder="e.g. client@email.com">
+            <p class="field__error" hidden></p>
+          </div>
+
+          <div class="nb-found-customer panel" id="foundCustomer" hidden>
+            <p class="nb-found-customer__name" id="foundName"></p>
+            <p class="nb-found-customer__meta" id="foundMeta"></p>
+          </div>
+        </div>
+
+        <div class="nb-nav">
+          <button class="btn" type="button" id="backToStep1FromExisting">← Back</button>
+          <button class="btn btn--primary" type="button" id="lookupBtn">Look up</button>
+          <button class="btn btn--primary" type="button" id="confirmLookupBtn" hidden>Continue →</button>
+        </div>
+      </section>
+
+      <!-- ── STEP 2b · New customer details ─────────────────────── -->
+      <section class="nb-panel" id="step2new" hidden aria-labelledby="step2newTitle">
+        <h2 class="nb-panel__title" id="step2newTitle">New client details</h2>
+        <p class="nb-panel__sub">This creates their account. They can log in later with this email and password.</p>
+
+        <div class="nb-form-body">
+          <p class="alert alert--error" id="newCustomerError" role="alert" hidden></p>
+
+          <div class="field-row-2">
+            <div class="field">
+              <label class="field__label" for="newFirstName">First name</label>
+              <input class="field__input" id="newFirstName" name="firstName" type="text" autocomplete="given-name">
+              <p class="field__error" hidden></p>
+            </div>
+            <div class="field">
+              <label class="field__label" for="newLastName">Last name</label>
+              <input class="field__input" id="newLastName" name="lastName" type="text" autocomplete="family-name">
+              <p class="field__error" hidden></p>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="newEmail">Email address</label>
+            <input class="field__input" id="newEmail" name="email" type="email" autocomplete="email">
+            <p class="field__error" hidden></p>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="newContact">Contact number</label>
+            <input class="field__input" id="newContact" name="contactNumber" type="tel" placeholder="09XXXXXXXXX" maxlength="11">
+            <p class="field__error" hidden></p>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="newPassword">Temporary password</label>
+            <input class="field__input" id="newPassword" name="password" type="text" autocomplete="off" placeholder="Min. 8 characters, include a number">
+            <p class="field__hint">The client can change this after logging in.</p>
+            <p class="field__error" hidden></p>
+          </div>
+        </div>
+
+        <div class="nb-nav">
+          <button class="btn" type="button" id="backToStep1FromNew">← Back</button>
+          <button class="btn btn--primary" type="button" id="continueFromNew">Continue →</button>
+        </div>
+      </section>
+
+      <!-- ── STEP 3 · Booking details ───────────────────────────── -->
+      <section class="nb-panel" id="step3" hidden aria-labelledby="step3Title">
+        <h2 class="nb-panel__title" id="step3Title">Booking details</h2>
+        <p class="nb-panel__sub">Select the services and schedule for this booking.</p>
+
+        <div class="nb-form-body">
+          <p class="alert alert--error" id="bookingError" role="alert" hidden></p>
+
+          <div class="field">
+            <p class="field__label">Services</p>
+            <div class="nb-service-grid" id="serviceGrid">
+              <p class="status-message" id="serviceGridStatus">Loading services…</p>
+            </div>
+            <p class="field__error" id="serviceError" hidden></p>
+          </div>
+
+          <!-- Inline calendar date picker -->
+          <div class="field">
+            <p class="field__label">Event date</p>
+            <div class="nb-cal">
+              <div class="nb-cal__header">
+                <button class="nb-cal__nav" type="button" id="calPrev" aria-label="Previous month">&#8249;</button>
+                <span class="nb-cal__month" id="calMonth"></span>
+                <button class="nb-cal__nav" type="button" id="calNext" aria-label="Next month">&#8250;</button>
+              </div>
+              <div class="nb-cal__weekdays">
+                <span>Su</span><span>Mo</span><span>Tu</span><span>We</span>
+                <span>Th</span><span>Fr</span><span>Sa</span>
+              </div>
+              <div class="nb-cal__grid" id="calGrid"></div>
+              <p class="nb-cal__status status-message" id="calStatus" hidden></p>
+              <div class="nb-cal__legend">
+                <span class="nb-cal__legend-dot nb-cal__legend-dot--booked"></span> Has bookings
+                <span class="nb-cal__legend-dot nb-cal__legend-dot--blocked" style="margin-left:0.75rem;"></span> Blocked
+              </div>
+            </div>
+            <p class="nb-cal__selected" id="calSelected">No date selected</p>
+            <p class="field__error" id="dateError" hidden></p>
+          </div>
+
+          <div class="field-row-2">
+            <div class="field">
+              <label class="field__label" for="bookingStart">Start time</label>
+              <select class="field__input" id="bookingStart" name="startTime">
+                <option value="">Select start time</option>
+              </select>
+              <p class="field__error" hidden></p>
+            </div>
+            <div class="field">
+              <label class="field__label" for="bookingEnd">End time</label>
+              <select class="field__input" id="bookingEnd" name="endTime">
+                <option value="">Select end time</option>
+              </select>
+              <p class="field__error" hidden></p>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="bookingAddress">Event address <span class="nb-optional">(optional)</span></label>
+            <input class="field__input" id="bookingAddress" name="eventAddress" type="text" maxlength="255">
+            <p class="field__error" hidden></p>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="voucherCode">Voucher code <span class="nb-optional">(optional)</span></label>
+            <div class="input-group">
+              <input class="field__input" id="voucherCode" name="voucherCode" type="text" placeholder="e.g. DISC10" style="border-radius: var(--radius-sm) 0 0 var(--radius-sm);">
+              <button class="btn" type="button" id="applyVoucherBtn" style="border-radius: 0 var(--radius-sm) var(--radius-sm) 0; white-space: nowrap;">Apply</button>
+            </div>
+            <p class="field__hint" id="voucherHint" hidden></p>
+            <p class="field__error" id="voucherError" hidden></p>
+          </div>
+
+          <!-- Order summary -->
+          <div class="nb-summary panel" id="orderSummary" hidden>
+            <p class="nb-summary__title">Order summary</p>
+            <table class="nb-summary__table">
+              <tbody id="summaryServices"></tbody>
+              <tfoot id="summaryTotals"></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="nb-nav">
+          <button class="btn" type="button" id="backToStep2">← Back</button>
+          <button class="btn btn--primary" type="button" id="continueFromBooking">Continue →</button>
+        </div>
+      </section>
+
+      <!-- ── STEP 4 · Payment ───────────────────────────────────── -->
+      <section class="nb-panel" id="step4" hidden aria-labelledby="step4Title">
+        <h2 class="nb-panel__title" id="step4Title">Downpayment</h2>
+        <p class="nb-panel__sub">Record the 50% downpayment received from the client.</p>
+
+        <div class="nb-form-body">
+          <p class="alert alert--error" id="paymentError" role="alert" hidden></p>
+
+          <div class="nb-dp-info panel" id="dpInfo">
+            <div>
+              <p class="nb-dp-info__label">Total amount</p>
+              <p class="nb-dp-info__value" id="dpTotal">—</p>
+            </div>
+            <div>
+              <p class="nb-dp-info__label">Required downpayment (50%)</p>
+              <p class="nb-dp-info__value nb-dp-info__value--highlight" id="dpRequired">—</p>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="paymentMethod">Payment method</label>
+            <select class="field__input" id="paymentMethod" name="method">
+              <option value="">Select method</option>
+              <option value="Cash">Cash</option>
+              <option value="GCash">GCash</option>
+            </select>
+            <p class="field__error" hidden></p>
+          </div>
+
+          <div class="field" id="amountField">
+            <label class="field__label" for="paymentAmount">Amount received</label>
+            <div class="input-group">
+              <span class="input-group__prefix">₱</span>
+              <input class="field__input" id="paymentAmount" name="amount" type="number" min="0" step="0.01" placeholder="0.00">
+            </div>
+            <p class="field__error" hidden></p>
+          </div>
+
+          <label class="nb-checkbox">
+            <input type="checkbox" id="markDp" name="markDp">
+            <span>Use the exact 50% downpayment amount</span>
+          </label>
+
+          <div class="field">
+            <label class="field__label" for="paymentNote">Note <span class="nb-optional">(optional)</span></label>
+            <input class="field__input" id="paymentNote" name="note" type="text" maxlength="255" placeholder="e.g. Paid in full on-site">
+            <p class="field__error" hidden></p>
+          </div>
+        </div>
+
+        <div class="nb-nav">
+          <button class="btn" type="button" id="backToStep3">← Back</button>
+          <button class="btn btn--primary" type="button" id="submitBtn">Record booking</button>
+        </div>
+      </section>
+
+      <!-- ── SUCCESS ─────────────────────────────────────────────── -->
+      <section class="nb-panel nb-success" id="stepSuccess" hidden aria-labelledby="successTitle">
+        <div class="nb-success__icon" aria-hidden="true">✓</div>
+        <h2 class="nb-panel__title" id="successTitle">Booking recorded!</h2>
+        <p class="nb-success__ref" id="successRef"></p>
+        <p class="nb-success__detail" id="successDetail"></p>
+        <div class="nb-nav nb-nav--center">
+          <a class="btn btn--primary" href="bookings.html">Go to Bookings</a>
+          <button class="btn" type="button" id="anotherBookingBtn">New booking</button>
+        </div>
+      </section>
+
+    </div><!-- /.nb-card -->
+  </main>
+
+  <p class="toast" id="toast" role="status" hidden></p>
+
+  <script type="module" src="../js/admin-session.js"></script>
+  <script type="module" src="../js/new-booking.js"></script>
+</body>
+</html>
