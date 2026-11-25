@@ -76,6 +76,17 @@ async function findPendingForBooking(connection, bookingId) {
   return row || null;
 }
 
+async function hasActivePaymentForBooking(connection, bookingId) {
+  const [[row]] = await connection.query(
+    `SELECT EXISTS(
+       SELECT 1 FROM payment
+        WHERE booking_id = ? AND status IN ('Pending', 'Verified')
+     ) AS hasActivePayment`,
+    [bookingId]
+  );
+  return Number(row.hasActivePayment) === 1;
+}
+
 async function createPendingGatewayPayment(connection, { bookingId, type, amount, idempotencyKey }) {
   const [result] = await connection.query(
     `INSERT INTO payment (booking_id, payment_type, amount, method, reference_number, status, submitted_at)
@@ -212,6 +223,7 @@ async function verifySchema() {
 module.exports = {
   findPendingForReview,
   findPendingForBooking,
+  hasActivePaymentForBooking,
   createPendingGatewayPayment,
   updateGatewayReference,
   findGatewayByReference,

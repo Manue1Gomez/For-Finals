@@ -10,6 +10,14 @@ async function create(req, res, next) {
   }
 }
 
+async function availability(req, res, next) {
+  try {
+    res.json(await customerBookingService.getAvailability(req.query));
+  } catch (error) {
+    sendError(error, res, next);
+  }
+}
+
 async function validateVoucher(req, res, next) {
   try {
     const result = await customerBookingService.validateVoucher(
@@ -22,4 +30,4 @@ async function validateVoucher(req, res, next) {
   }
 }
 
-module.exports = { create, validateVoucher };
+module.exports = { create, availability, validateVoucher };

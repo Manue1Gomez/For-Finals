@@ -1,3 +1,4 @@
+import './sidebar.js';
 import { sendJson } from './admin-api.js';
 
 const logoutButton = document.querySelector('[data-logout]');

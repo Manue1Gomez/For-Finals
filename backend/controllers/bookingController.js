@@ -25,6 +25,14 @@ async function update(req, res, next) {
   }
 }
 
+async function availability(req, res, next) {
+  try {
+    res.json(await bookingService.getBookingAvailability(req.params.id, req.query.date));
+  } catch (error) {
+    sendError(error, res, next);
+  }
+}
+
 async function remove(req, res, next) {
   try {
     await bookingService.deleteBooking(req.params.id);
@@ -43,4 +51,4 @@ async function autoComplete(req, res, next) {
   }
 }
 
-module.exports = { list, details, update, remove, autoComplete };
+module.exports = { list, details, update, availability, remove, autoComplete };

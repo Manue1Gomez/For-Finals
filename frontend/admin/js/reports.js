@@ -17,6 +17,7 @@ const elements = {
   stats: document.querySelectorAll('[data-stat]'),
   grid: document.getElementById('reportGrid'),
   menu: document.getElementById('reportMenu'),
+  reportButton: document.querySelector('.nav-link--active[href="reports.html"]'),
   menuTemplate: document.getElementById('menuItemTemplate'),
 
   incomeBars: document.getElementById('incomeBars'),
@@ -269,6 +270,15 @@ elements.filters.addEventListener('change', () => {
 });
 
 elements.filters.addEventListener('submit', (event) => event.preventDefault());
+
+elements.reportButton.addEventListener('click', (event) => {
+  event.preventDefault();
+  const expanded = elements.reportButton.getAttribute('aria-expanded') === 'true';
+  elements.reportButton.setAttribute('aria-expanded', String(!expanded));
+  elements.menu.hidden = expanded;
+  if (!expanded) elements.menu.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
 
 async function init() {
   const filters = readFilters();

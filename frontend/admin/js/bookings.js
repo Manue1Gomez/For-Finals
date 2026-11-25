@@ -42,6 +42,15 @@ const elements = {
   viewPayments: document.getElementById('viewPayments'),
   viewNoPayments: document.getElementById('viewNoPayments'),
   viewContract: document.getElementById('viewContractButton'),
+  editSchedule: document.getElementById('editScheduleButton'),
+
+  scheduleDialog: document.getElementById('scheduleDialog'),
+  scheduleForm: document.getElementById('scheduleForm'),
+  scheduleDate: document.getElementById('scheduleDate'),
+  scheduleSlotStatus: document.getElementById('scheduleSlotStatus'),
+  scheduleSlots: document.getElementById('scheduleSlots'),
+  scheduleError: document.getElementById('scheduleError'),
+  scheduleSave: document.getElementById('scheduleSave'),
 
   confirmDialog: document.getElementById('confirmDialog'),
   confirmTitle: document.getElementById('confirmTitle'),
@@ -64,6 +73,10 @@ let latestRequest = 0;
 let searchTimer = null;
 let pendingConfirm = null;
 let viewing = null;
+let scheduleSlots = [];
+let selectedScheduleSlot = null;
+let scheduleAvailabilityRequest = 0;
+let editingSchedule = null;
 
 const hasActiveFilters = () => Boolean(state.search || state.serviceId || state.date);
 
@@ -335,6 +348,7 @@ function renderBookingDetails(details) {
 
   elements.viewPayments.replaceChildren(...details.payments.map(createPaymentItem));
   elements.viewNoPayments.hidden = details.payments.length > 0;
+  elements.editSchedule.hidden = !details.canReschedule;
 }
 
 async function openView(id) {
@@ -344,6 +358,104 @@ async function openView(id) {
     elements.viewDialog.showModal();
   } catch (error) {
     showToast(error.message, 'error');
+  }
+}
+
+function todayIso() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function renderScheduleSlots() {
+  elements.scheduleSlots.replaceChildren(...scheduleSlots.map((slot) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'schedule-slot';
+    button.textContent = slot.label;
+    button.dataset.startTime = slot.startTime;
+    button.setAttribute('aria-pressed', String(selectedScheduleSlot?.startTime === slot.startTime));
+    if (selectedScheduleSlot?.startTime === slot.startTime) button.classList.add('schedule-slot--selected');
+    return button;
+  }));
+}
+
+async function loadScheduleAvailability(date) {
+  const request = ++scheduleAvailabilityRequest;
+  scheduleSlots = [];
+  selectedScheduleSlot = null;
+  elements.scheduleError.hidden = true;
+  elements.scheduleSlotStatus.textContent = 'Checking available slots...';
+  elements.scheduleSave.disabled = true;
+  renderScheduleSlots();
+
+  try {
+    const availability = await getJson(
+      `${API_BASE}/${editingSchedule.id}/availability?date=${encodeURIComponent(date)}`
+    );
+    if (request !== scheduleAvailabilityRequest) return;
+
+    if (availability.wholeDay) {
+      elements.scheduleSlotStatus.textContent = availability.available
+        ? 'Modeling Workshop is a full-day booking. No time selection is needed.'
+        : 'This date is unavailable for a Modeling Workshop.';
+      elements.scheduleSave.disabled = !availability.available;
+      return;
+    }
+
+    scheduleSlots = availability.slots ?? [];
+    if (date === editingSchedule.eventDate) {
+      selectedScheduleSlot = scheduleSlots.find((slot) => slot.startTime === editingSchedule.startTime) ?? null;
+    }
+    elements.scheduleSlotStatus.textContent = scheduleSlots.length
+      ? `Available slots for ${availability.durationHours} hour${availability.durationHours === 1 ? '' : 's'}:`
+      : 'No time slots are available on this date.';
+    renderScheduleSlots();
+    elements.scheduleSave.disabled = !selectedScheduleSlot;
+  } catch (error) {
+    if (request !== scheduleAvailabilityRequest) return;
+    elements.scheduleSlotStatus.textContent = error.message || 'Could not load available slots.';
+  }
+}
+
+function openScheduleEditor() {
+  if (!viewing?.canReschedule) return;
+  editingSchedule = viewing;
+  elements.scheduleForm.reset();
+  elements.scheduleDate.min = todayIso();
+  elements.scheduleDate.value = viewing.eventDate;
+  elements.scheduleDialog.showModal();
+  loadScheduleAvailability(viewing.eventDate);
+}
+
+async function saveSchedule(event) {
+  event.preventDefault();
+  elements.scheduleError.hidden = true;
+  if (!elements.scheduleDate.value) {
+    elements.scheduleError.textContent = 'Choose a new date.';
+    elements.scheduleError.hidden = false;
+    return;
+  }
+  if (!editingSchedule.wholeDay && !selectedScheduleSlot) {
+    elements.scheduleError.textContent = 'Choose an available time slot.';
+    elements.scheduleError.hidden = false;
+    return;
+  }
+
+  elements.scheduleSave.disabled = true;
+  try {
+    await sendJson(`${API_BASE}/${editingSchedule.id}`, 'PUT', {
+      eventDate: elements.scheduleDate.value,
+      ...(editingSchedule.wholeDay ? {} : { startTime: selectedScheduleSlot.startTime }),
+    });
+    elements.scheduleDialog.close();
+    showToast('Booking schedule updated.');
+    viewing = await getJson(`${API_BASE}/${editingSchedule.id}`);
+    renderBookingDetails(viewing);
+    await loadBookings();
+  } catch (error) {
+    elements.scheduleError.textContent = error.message;
+    elements.scheduleError.hidden = false;
+    elements.scheduleSave.disabled = false;
   }
 }
 
@@ -487,6 +599,16 @@ elements.viewContract.addEventListener('click', () => {
   if (viewing) window.open(`${CONTRACT_PAGE}?id=${viewing.id}&from=admin`, '_blank');
 });
 
+elements.editSchedule.addEventListener('click', openScheduleEditor);
+elements.scheduleDate.addEventListener('change', () => loadScheduleAvailability(elements.scheduleDate.value));
+elements.scheduleSlots.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-start-time]');
+  if (!button) return;
+  selectedScheduleSlot = scheduleSlots.find((slot) => slot.startTime === button.dataset.startTime) ?? null;
+  renderScheduleSlots();
+  elements.scheduleSave.disabled = !selectedScheduleSlot;
+});
+elements.scheduleForm.addEventListener('submit', saveSchedule);
 elements.confirmButton.addEventListener('click', runConfirmed);
 
 clearFieldOnInput(elements.viewDialog);

@@ -1,6 +1,8 @@
 const voucherModel = require('../models/voucherModel');
 const AppError = require('./appError');
+const { withTransaction } = require('../config/db');
 const { isValidIsoDate } = require('./timeHelper');
+const { canSetUsageLimit, getRemainingUses, getSafeCount } = require('./voucherUsageRules');
 
 const MYSQL_DUPLICATE_ENTRY = 'ER_DUP_ENTRY';
 
@@ -95,7 +97,9 @@ function toPublicVoucher(row) {
     discountValue: Number(row.discountValue),
     startDate: row.startDate,
     endDate: row.endDate,
-    usageLimit: row.usageLimit,
+    usageLimit: getSafeCount(row.usageLimit),
+    usedCount: getSafeCount(row.usedCount),
+    remainingUses: getRemainingUses(row.usageLimit, row.usedCount),
     expired: Boolean(row.expired),
   };
 }
@@ -119,24 +123,34 @@ async function createVoucher(body) {
 
 async function updateVoucher(rawId, body) {
   const id = parseId(rawId);
-  const existing = await voucherModel.findById(id);
-  if (!existing) throw notFoundError();
-
   const fields = normalizeFields(body);
   validateFields(fields);
 
-  if (fields.code !== existing.code && (await voucherModel.countBookingsUsing(existing.code)) > 0) {
-    throw codeInUseError();
-  }
-
   try {
-    await voucherModel.update(id, fields);
+    return await withTransaction(async (connection) => {
+      const existing = await voucherModel.lockById(connection, id);
+      if (!existing) throw notFoundError();
+
+      const usedCount = Number(existing.usedCount);
+      if (
+        fields.code !== existing.code &&
+        (usedCount > 0 || (await voucherModel.countBookingReferences(existing.code, connection)) > 0)
+      ) {
+        throw codeInUseError();
+      }
+      if (!canSetUsageLimit(fields.usageLimit, usedCount)) {
+        throw new AppError('Usage limit cannot be lower than the number of times this voucher was used.', 400, {
+          usageLimit: 'Usage limit cannot be lower than the number of times this voucher was used.',
+        });
+      }
+
+      await voucherModel.update(id, fields, connection);
+      return toPublicVoucher(await voucherModel.findById(id, connection));
+    });
   } catch (error) {
     if (error.code === MYSQL_DUPLICATE_ENTRY) throw codeTakenError();
     throw error;
   }
-
-  return toPublicVoucher(await voucherModel.findById(id));
 }
 
 async function deleteVoucher(rawId) {

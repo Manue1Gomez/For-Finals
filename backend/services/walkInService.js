@@ -2,15 +2,18 @@ const bcrypt = require('bcryptjs');
 const AppError = require('./appError');
 const { withTransaction } = require('../config/db');
 const { BOOKING_STATUS } = require('../config/bookingStatus');
-const { SCHEDULE_CONFLICT_STATUSES, BOOKING_HOURS } = require('../config/bookingRules');
 const customerModel = require('../models/customerModel');
 const customerBookingModel = require('../models/customerBookingModel');
 const bookingManagementModel = require('../models/bookingManagementModel');
-const blockedDateModel = require('../models/blockedDateModel');
+const voucherModel = require('../models/voucherModel');
 const paymentModel = require('../models/paymentModel');
+const paymentService = require('./paymentService');
 const { toCents, fromCents, parseAmountToCents } = require('./money');
-const { isValidIsoDate, timeTextToMinutes, todayIso } = require('./timeHelper');
+const { isValidIsoDate, todayIso } = require('./timeHelper');
 const { statusAfterPayment, requiredDownpaymentCents } = require('./paymentRules');
+const availabilityService = require('./availabilityService');
+const voucherRedemptionService = require('./voucherRedemptionService');
+const receiptEmailService = require('./receiptEmailService');
 
 const SALT_ROUNDS = 10;
 const MYSQL_DUPLICATE_ENTRY = 'ER_DUP_ENTRY';
@@ -55,8 +58,6 @@ function validateNewCustomer(c) {
 
 function validateBookingInput(b) {
   const errors = {};
-  const opens = timeTextToMinutes(BOOKING_HOURS.open);
-  const closes = timeTextToMinutes(BOOKING_HOURS.close);
   const today = todayIso();
 
   if (!Array.isArray(b.serviceIds) || b.serviceIds.length === 0) {
@@ -66,18 +67,7 @@ function validateBookingInput(b) {
   if (!isValidIsoDate(b.eventDate)) errors.eventDate = 'Choose a valid event date.';
   else if (b.eventDate < today) errors.eventDate = 'Choose today or a later date.';
 
-  if (!TIME_RE.test(b.startTime)) errors.startTime = 'Choose a valid start time.';
-  if (!TIME_RE.test(b.endTime)) errors.endTime = 'Choose a valid end time.';
-
-  if (!errors.startTime && !errors.endTime) {
-    const start = timeTextToMinutes(b.startTime);
-    const end = timeTextToMinutes(b.endTime);
-    if (end <= start) errors.endTime = 'End time must be later than the start time.';
-    else if (start < opens || end > closes) {
-      errors.startTime = `Bookings are accepted from ${BOOKING_HOURS.open} to ${BOOKING_HOURS.close} only.`;
-    }
-  }
-
+  if (b.startTime && !TIME_RE.test(b.startTime)) errors.startTime = 'Choose a valid start time.';
   return errors;
 }
 
@@ -130,7 +120,6 @@ async function createWalkInBooking(body = {}) {
       : [],
     eventDate:    asText(bookingInput.eventDate),
     startTime:    asText(bookingInput.startTime),
-    endTime:      asText(bookingInput.endTime),
     eventAddress: asText(bookingInput.eventAddress) || null,
     voucherCode:  asText(bookingInput.voucherCode).toUpperCase() || null,
   };
@@ -159,7 +148,7 @@ async function createWalkInBooking(body = {}) {
     throw new AppError('Please fix the highlighted fields.', 400, allErrors);
   }
 
-  return withTransaction(async (connection) => {
+  const result = await withTransaction(async (connection) => {
     // ── Resolve customer ID ──────────────────────────────────────
     let customerId;
 
@@ -202,26 +191,12 @@ async function createWalkInBooking(body = {}) {
     }
 
     // ── Check schedule ───────────────────────────────────────────
-    if (await blockedDateModel.exists(booking.eventDate)) {
-      throw new AppError('This date is blocked on the calendar.', 409, {
-        eventDate: 'This date is blocked on the calendar.',
-      });
-    }
-
-    const conflict = await bookingManagementModel.findConflict(connection, {
-      bookingId: 0,
+    const schedule = await availabilityService.resolveSchedule(connection, {
       date: booking.eventDate,
-      startTime: booking.startTime,
-      endTime: booking.endTime,
       serviceIds: booking.serviceIds,
-      statuses: SCHEDULE_CONFLICT_STATUSES,
+      startTime: booking.startTime,
+      services,
     });
-
-    if (conflict) {
-      throw new AppError('This schedule conflicts with an existing booking.', 409, {
-        startTime: 'This schedule conflicts with an existing booking.',
-      });
-    }
 
     // ── Compute totals ───────────────────────────────────────────
     const subtotalCents = services.reduce((sum, s) => sum + toCents(s.price), 0);
@@ -229,22 +204,21 @@ async function createWalkInBooking(body = {}) {
     let appliedVoucher = null;
 
     if (booking.voucherCode) {
-      const [[voucherRow]] = await connection.query(
-        `SELECT discount_type AS discountType, discount_value AS discountValue
-           FROM voucher
-          WHERE voucher_code = ?
-            AND CURDATE() BETWEEN start_date AND end_date
-            AND usage_limit > (SELECT COUNT(*) FROM booking b WHERE b.voucher_code = ?)`,
-        [booking.voucherCode, booking.voucherCode]
-      );
+      const voucherRow = await voucherModel.findAvailableForUse(connection, booking.voucherCode, {
+        forUpdate: true,
+      });
 
-      if (voucherRow) {
-        discountCents = voucherRow.discountType === 'Percentage'
-          ? Math.round((subtotalCents * Number(voucherRow.discountValue)) / 100)
-          : toCents(Number(voucherRow.discountValue));
-        discountCents = Math.min(discountCents, subtotalCents);
-        appliedVoucher = booking.voucherCode;
+      if (!voucherRow) {
+        throw new AppError('Voucher is invalid, expired, or has reached its usage limit.', 400, {
+          voucherCode: 'Voucher is invalid, expired, or has reached its usage limit.',
+        });
       }
+
+      discountCents = voucherRow.discountType === 'Percentage'
+        ? Math.round((subtotalCents * Number(voucherRow.discountValue)) / 100)
+        : toCents(Number(voucherRow.discountValue));
+      discountCents = Math.min(discountCents, subtotalCents);
+      appliedVoucher = booking.voucherCode;
     }
 
     const totalCents = subtotalCents - discountCents;
@@ -263,8 +237,8 @@ async function createWalkInBooking(body = {}) {
     const bookingId = await customerBookingModel.create(connection, {
       customerId,
       eventDate:      booking.eventDate,
-      startTime:      booking.startTime,
-      endTime:        booking.endTime,
+      startTime:      schedule.startTime,
+      endTime:        schedule.endTime,
       subtotal:       fromCents(subtotalCents),
       discountAmount: fromCents(discountCents),
       totalAmount:    fromCents(totalCents),
@@ -280,12 +254,18 @@ async function createWalkInBooking(body = {}) {
     const paidAfterCents = amountCents;
     const bookingStatusAfter = statusAfterPayment(BOOKING_STATUS.CONFIRMED, paidAfterCents, totalCents);
 
-    await paymentModel.insertVerifiedByAdmin(connection, {
+    const paymentId = await paymentModel.insertVerifiedByAdmin(connection, {
       bookingId,
       type:   'Downpayment',
       amount: fromCents(amountCents),
       method: payment.method,
       note:   payment.note,
+    });
+
+    await voucherRedemptionService.consumeForBooking(connection, {
+      id: bookingId,
+      voucherCode: appliedVoucher,
+      voucherConsumed: false,
     });
 
     await bookingManagementModel.addToPaid(connection, bookingId, fromCents(amountCents));
@@ -298,6 +278,7 @@ async function createWalkInBooking(body = {}) {
 
     return {
       bookingId,
+      paymentId,
       reference,
       bookingStatus: bookingStatusAfter,
       totalAmount:   fromCents(totalCents),
@@ -305,6 +286,15 @@ async function createWalkInBooking(body = {}) {
       balance:       fromCents(totalCents - amountCents),
     };
   });
+
+  const email = await paymentService.sendReceipt({
+    paymentId: result.paymentId,
+    bookingId: result.bookingId,
+    outcome: receiptEmailService.OUTCOME.CONFIRMED,
+  });
+  const { paymentId, ...response } = result;
+
+  return { ...response, email };
 }
 
 module.exports = { createWalkInBooking };

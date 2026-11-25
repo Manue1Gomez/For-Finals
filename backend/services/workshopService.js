@@ -2,13 +2,10 @@ const AppError = require('./appError');
 const bookingManagementService = require('./bookingManagementService');
 const workshopModel = require('../models/workshopModel');
 const { splitServices } = require('../models/bookingSql');
-const { BOOKING_HOURS } = require('../config/bookingRules');
 const { ONGOING_WORKSHOP_STATUSES } = require('../config/workshopRules');
 const { toCents, fromCents } = require('./money');
 const { describePayment } = require('./paymentRules');
-const { formatTimeRange, isValidIsoDate, timeTextToMinutes, todayIso } = require('./timeHelper');
-
-const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const { formatTimeRange, isValidIsoDate, todayIso } = require('./timeHelper');
 const BUNDLED_MESSAGE = 'This booking includes other services, so it cannot be rescheduled from here.';
 
 const asText = (value) => String(value ?? '').trim();
@@ -55,29 +52,11 @@ async function listStudents() {
 }
 
 function readScheduleInput(body = {}) {
-  const input = {
-    eventDate: asText(body.eventDate),
-    startTime: asText(body.startTime),
-    endTime: asText(body.endTime),
-  };
+  const input = { eventDate: asText(body.eventDate) };
   const errors = {};
 
   if (!isValidIsoDate(input.eventDate)) errors.eventDate = 'Enter a valid date.';
   else if (input.eventDate < todayIso()) errors.eventDate = 'Choose today or a later date.';
-
-  if (!TIME_PATTERN.test(input.startTime)) errors.startTime = 'Enter a valid start time.';
-  if (!TIME_PATTERN.test(input.endTime)) errors.endTime = 'Enter a valid end time.';
-
-  if (!errors.startTime && !errors.endTime) {
-    const start = timeTextToMinutes(input.startTime);
-    const end = timeTextToMinutes(input.endTime);
-
-    if (end <= start) {
-      errors.endTime = 'End time must be later than the start time.';
-    } else if (start < timeTextToMinutes(BOOKING_HOURS.open) || end > timeTextToMinutes(BOOKING_HOURS.close)) {
-      errors.startTime = `Sessions run from ${BOOKING_HOURS.open} to ${BOOKING_HOURS.close} only.`;
-    }
-  }
 
   if (Object.keys(errors).length > 0) throw new AppError('Please fix the highlighted fields.', 400, errors);
 
@@ -99,13 +78,9 @@ async function rescheduleStudent(rawId, body) {
 
   if (booking.serviceCount !== 1) throw new AppError(BUNDLED_MESSAGE, 409);
 
-  if (
-    input.eventDate === booking.eventDate &&
-    input.startTime === booking.startTime &&
-    input.endTime === booking.endTime
-  ) {
-    throw new AppError('Choose a different date or time from the current schedule.', 400, {
-      eventDate: 'Choose a different date or time from the current schedule.',
+  if (input.eventDate === booking.eventDate) {
+    throw new AppError('Choose a different date from the current schedule.', 400, {
+      eventDate: 'Choose a different date from the current schedule.',
     });
   }
 

@@ -510,6 +510,37 @@
   align-content: start;
 }
 
+.detail__reschedule-slot-status {
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+.detail__reschedule-slots,
+.schedule-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.55rem;
+}
+
+.detail__reschedule-slot,
+.schedule-slot {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--color-placeholder);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--color-ink-soft);
+  font: inherit;
+  cursor: pointer;
+}
+
+.detail__reschedule-slot--selected,
+.schedule-slot--selected {
+  border-color: var(--color-brand);
+  color: var(--color-brand-dark);
+  background: #fff8f4;
+  box-shadow: 0 0 0 1px var(--color-brand);
+}
+
 .detail__reschedule-actions {
   grid-column: 1 / -1;
   display: flex;

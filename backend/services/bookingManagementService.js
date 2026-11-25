@@ -1,19 +1,21 @@
 const AppError = require('./appError');
-const { withTransaction } = require('../config/db');
+const { pool, withTransaction } = require('../config/db');
 const { BOOKING_STATUS } = require('../config/bookingStatus');
 const {
   ONGOING_STATUSES,
   STATUS_TRANSITIONS,
-  SCHEDULE_CONFLICT_STATUSES,
   GROUP_BY_STATUS,
 } = require('../config/bookingRules');
 const bookingManagementModel = require('../models/bookingManagementModel');
-const blockedDateModel = require('../models/blockedDateModel');
 const paymentModel = require('../models/paymentModel');
 const { splitServices } = require('../models/bookingSql');
 const { toCents, fromCents } = require('./money');
 const { describePayment } = require('./paymentRules');
 const { formatMinutes, formatTimeRange, isValidIsoDate, timeTextToMinutes, todayIso } = require('./timeHelper');
+const availabilityService = require('./availabilityService');
+const { getScheduleDetails } = require('./serviceScheduleRules');
+const voucherRedemptionService = require('./voucherRedemptionService');
+const workshopEmailService = require('./workshopEmailService');
 
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 50;
@@ -154,7 +156,13 @@ async function getBookingDetails(rawId) {
     endTime: details.endTime,
     timeLabel: formatTimeRange(timeTextToMinutes(details.startTime), timeTextToMinutes(details.endTime)),
     eventAddress: details.eventAddress,
-    services: services.map((service) => ({ id: service.id, name: service.name, price: Number(service.price) })),
+    services: services.map((service) => ({
+      id: service.id,
+      name: service.name,
+      price: Number(service.price),
+      durationHours: service.durationHours === null ? null : Number(service.durationHours),
+    })),
+    wholeDay: services.some((service) => /modeling workshop/i.test(service.name)),
     voucherCode: details.voucherCode,
     subtotal: Number(details.subtotal),
     discountAmount: Number(details.discountAmount),
@@ -176,7 +184,6 @@ function readUpdateInput(body, booking) {
     status: asText(body.status ?? booking.status),
     eventDate: asText(body.eventDate ?? booking.eventDate),
     startTime: asText(body.startTime ?? booking.startTime),
-    endTime: asText(body.endTime ?? booking.endTime),
     eventAddress: address || null,
   };
 }
@@ -187,10 +194,6 @@ function validateUpdateInput(input) {
   if (!ALL_STATUSES.includes(input.status)) errors.status = 'Choose a valid status.';
   if (!isValidIsoDate(input.eventDate)) errors.eventDate = 'Enter a valid event date.';
   if (!TIME_PATTERN.test(input.startTime)) errors.startTime = 'Enter a valid start time.';
-  if (!TIME_PATTERN.test(input.endTime)) errors.endTime = 'Enter a valid end time.';
-  if (!errors.startTime && !errors.endTime && input.endTime <= input.startTime) {
-    errors.endTime = 'End time must be later than the start time.';
-  }
   if (input.eventAddress && input.eventAddress.length > MAX_ADDRESS_LENGTH) {
     errors.eventAddress = `Address must be ${MAX_ADDRESS_LENGTH} characters or fewer.`;
   }
@@ -215,48 +218,31 @@ function assertTransitionAllowed(booking, nextStatus, today) {
   throw new AppError(message, 409, { status: message });
 }
 
-async function assertScheduleAvailable(connection, bookingId, input) {
-  if (await blockedDateModel.exists(input.eventDate)) {
-    const message = 'This date is blocked. Unblock it in the Calendar first, or choose another date.';
-    throw new AppError(message, 409, { eventDate: message });
-  }
-
-  const serviceIds = await bookingManagementModel.findServiceIds(connection, bookingId);
-  const conflict = await bookingManagementModel.findConflict(connection, {
-    bookingId,
-    date: input.eventDate,
-    startTime: input.startTime,
-    endTime: input.endTime,
-    serviceIds,
-    statuses: SCHEDULE_CONFLICT_STATUSES,
-  });
-
-  if (conflict) {
-    const range = formatTimeRange(timeTextToMinutes(conflict.startTime), timeTextToMinutes(conflict.endTime));
-    throw new AppError(`${conflict.serviceName} is already booked from ${range} (#${conflict.reference}).`, 409, {
-      schedule: `${conflict.serviceName} is already booked from ${range} (#${conflict.reference}).`,
-    });
-  }
-}
-
 async function updateBooking(rawId, body = {}) {
   const id = parseId(rawId);
   const today = todayIso();
+  let workshopReschedule = null;
 
   await withTransaction(async (connection) => {
     const booking = await bookingManagementModel.lockById(connection, id);
     if (!booking) throw new AppError('Booking not found.', 404);
 
     const input = readUpdateInput(body, booking);
+    const services = await bookingManagementModel.findBookingServices(connection, id);
+    const { isWorkshop } = getScheduleDetails(services);
     validateUpdateInput(input);
 
     const statusChanged = input.status !== booking.status;
     const scheduleChanged =
       input.eventDate !== booking.eventDate ||
-      input.startTime !== booking.startTime ||
-      input.endTime !== booking.endTime;
+      input.startTime !== booking.startTime;
 
-    if (statusChanged) assertTransitionAllowed(booking, input.status, today);
+    if (statusChanged) {
+      assertTransitionAllowed(booking, input.status, today);
+      if (input.status === BOOKING_STATUS.REJECTED) {
+        await voucherRedemptionService.releaseForBooking(connection, booking, { force: true });
+      }
+    }
 
     if (scheduleChanged) {
       if (!ONGOING_STATUSES.includes(booking.status)) {
@@ -272,18 +258,71 @@ async function updateBooking(rawId, body = {}) {
       (scheduleChanged && ONGOING_STATUSES.includes(input.status)) ||
       (statusChanged && input.status === BOOKING_STATUS.TO_PAY);
 
-    if (needsAvailabilityCheck) await assertScheduleAvailable(connection, id, input);
+    if (needsAvailabilityCheck) {
+      if (isWorkshop && body.startTime !== undefined && body.startTime !== booking.startTime) {
+        throw new AppError('Modeling Workshop is a full-day booking and does not have a time selection.', 400, {
+          startTime: 'Modeling Workshop is a full-day booking.',
+        });
+      }
+
+      const schedule = await availabilityService.resolveSchedule(connection, {
+        date: input.eventDate,
+        serviceIds: services.map((service) => service.id),
+        services,
+        startTime: isWorkshop ? undefined : input.startTime,
+        bookingId: id,
+      });
+      input.startTime = schedule.startTime;
+      input.endTime = schedule.endTime;
+    } else {
+      input.endTime = booking.endTime;
+      input.startTime = booking.startTime;
+    }
 
     await bookingManagementModel.update(connection, id, input);
+
+    if (scheduleChanged && isWorkshop) {
+      workshopReschedule = { bookingId: id, oldEventDate: booking.eventDate };
+    }
   });
 
+  if (workshopReschedule) {
+    await workshopEmailService.sendWorkshopRescheduleEmail(workshopReschedule);
+  }
+
   return getBookingDetails(id);
+}
+
+async function getBookingAvailability(rawId, rawDate) {
+  const id = parseId(rawId);
+  const booking = await bookingManagementModel.findDetails(id);
+  if (!booking) throw new AppError('Booking not found.', 404);
+  if (!ONGOING_STATUSES.includes(booking.status)) {
+    throw new AppError('Only ongoing bookings can be rescheduled.', 409);
+  }
+  const services = await bookingManagementModel.findBookingServices(pool, id);
+
+  return availabilityService.getAvailability({
+    date: asText(rawDate),
+    serviceIds: services.map((service) => service.id),
+    executor: pool,
+    excludeBookingId: id,
+    services,
+  });
 }
 
 async function deleteBooking(rawId) {
   const id = parseId(rawId);
 
-  if (!(await bookingManagementModel.remove(id))) throw new AppError('Booking not found.', 404);
+  const removed = await withTransaction(async (connection) => {
+    const booking = await bookingManagementModel.lockById(connection, id);
+    if (!booking) return false;
+
+    await voucherRedemptionService.releaseForBooking(connection, booking, { force: true });
+    return bookingManagementModel.remove(id, connection);
+  });
+
+  if (!removed) throw new AppError('Booking not found.', 404);
 }
 
 async function autoCompleteBookings() {
@@ -314,4 +353,11 @@ async function autoCompleteBookings() {
   return { completed: rows.length };
 }
 
-module.exports = { listBookings, getBookingDetails, updateBooking, deleteBooking, autoCompleteBookings };
+module.exports = {
+  listBookings,
+  getBookingDetails,
+  getBookingAvailability,
+  updateBooking,
+  deleteBooking,
+  autoCompleteBookings,
+};

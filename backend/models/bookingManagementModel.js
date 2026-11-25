@@ -19,6 +19,8 @@ const BOOKING_FIELDS = `b.booking_id AS id,
                         b.event_address AS eventAddress,
                         b.total_amount AS totalAmount,
                         b.amount_paid AS amountPaid,
+                        b.voucher_code AS voucherCode,
+                        b.voucher_consumed AS voucherConsumed,
                         b.status AS status`;
 
 function escapeLike(text) {
@@ -141,7 +143,10 @@ async function findDetails(id) {
 
 async function findServices(id) {
   const [rows] = await pool.query(
-    `SELECT s.service_id AS id, s.service_name AS name, bs.price AS price
+    `SELECT s.service_id AS id,
+            s.service_name AS name,
+            bs.price AS price,
+            s.duration_hours AS durationHours
        FROM booking_service bs
        JOIN service s ON s.service_id = bs.service_id
       WHERE bs.booking_id = ?
@@ -159,6 +164,39 @@ async function lockById(connection, id) {
 async function findServiceIds(connection, id) {
   const [rows] = await connection.query('SELECT service_id AS serviceId FROM booking_service WHERE booking_id = ?', [id]);
   return rows.map((row) => row.serviceId);
+}
+
+async function findBookingServices(connection, id) {
+  const [rows] = await connection.query(
+    `SELECT s.service_id AS id,
+            s.service_name AS name,
+            s.duration_hours AS durationHours
+       FROM booking_service bs
+       JOIN service s ON s.service_id = bs.service_id
+      WHERE bs.booking_id = ?
+      ORDER BY s.service_id`,
+    [id]
+  );
+  return rows;
+}
+
+async function lockScheduleDate(connection, date) {
+  await connection.query('INSERT IGNORE INTO booking_date_lock (event_date) VALUES (?)', [date]);
+  await connection.query('SELECT event_date FROM booking_date_lock WHERE event_date = ? FOR UPDATE', [date]);
+}
+
+async function findBusyIntervals(connection, { date, bookingId = 0, statuses, forUpdate = false }) {
+  const [rows] = await connection.query(
+    `SELECT TIME_TO_SEC(start_time) DIV 60 AS startMinute,
+            TIME_TO_SEC(end_time) DIV 60 AS endMinute
+       FROM booking
+      WHERE event_date = ?
+        AND booking_id <> ?
+        AND status IN (?)
+      ORDER BY start_time${forUpdate ? ' FOR UPDATE' : ''}`,
+    [date, bookingId, statuses]
+  );
+  return rows.map((row) => ({ start: row.startMinute, end: row.endMinute }));
 }
 
 async function findConflict(connection, { bookingId, date, startTime, endTime, serviceIds, statuses }) {
@@ -209,8 +247,15 @@ async function setSchedule(connection, id, { eventDate, startTime, endTime }) {
   );
 }
 
-async function remove(id) {
-  const [result] = await pool.query('DELETE FROM booking WHERE booking_id = ?', [id]);
+async function setVoucherConsumed(connection, id, consumed) {
+  await connection.query(
+    'UPDATE booking SET voucher_consumed = ? WHERE booking_id = ?',
+    [consumed ? 1 : 0, id]
+  );
+}
+
+async function remove(id, executor = pool) {
+  const [result] = await executor.query('DELETE FROM booking WHERE booking_id = ?', [id]);
   return result.affectedRows > 0;
 }
 
@@ -222,10 +267,14 @@ module.exports = {
   findServices,
   lockById,
   findServiceIds,
+  findBookingServices,
+  lockScheduleDate,
+  findBusyIntervals,
   findConflict,
   addToPaid,
   setStatus,
   update,
   setSchedule,
+  setVoucherConsumed,
   remove,
 };

@@ -72,7 +72,7 @@
         </footer>
       </section>
 
-      <section class="booking-step" data-step="2" data-title="Pick a date and time" data-subtitle="Select an available date and time range for your chosen services" hidden>
+      <section class="booking-step" data-step="2" data-title="Pick a date and time" data-subtitle="Choose a date and an available service-length slot" hidden>
         <p class="form-alert form-alert--error" id="scheduleError" role="alert" hidden></p>
 
         <div class="schedule">
@@ -102,22 +102,11 @@
           </div>
 
           <div class="schedule__time">
-            <h2 class="schedule__label">Preferred time range</h2>
-
-            <div class="form-field">
-              <label class="form-field__label" for="timeFrom">From:</label>
-              <select class="time-select" id="timeFrom"></select>
-            </div>
-
-            <div class="form-field">
-              <label class="form-field__label" for="timeTo">To:</label>
-              <select class="time-select" id="timeTo"></select>
-            </div>
-
-            <div class="schedule__booked" id="bookedNotice" hidden>
-              <p class="schedule__booked-title">Already booked for your services on this date</p>
-              <ul class="schedule__booked-list" id="bookedList"></ul>
-            </div>
+            <h2 class="schedule__label">Available time slots</h2>
+            <p class="schedule__hours" id="bookingHoursNote"></p>
+            <p class="form-alert form-alert--error" id="workshopNotice" role="status" hidden></p>
+            <p class="schedule__slot-status" id="slotStatus" role="status">Choose services and a date to see available times.</p>
+            <div class="schedule__slots" id="availableSlots" role="group" aria-label="Available time slots"></div>
           </div>
         </div>
 
@@ -201,6 +190,7 @@
             <span class="service-option__name"></span>
             <span class="service-option__price-label">Price:</span>
             <span class="service-option__price"></span>
+            <span class="service-option__duration"></span>
           </span>
           <span class="service-option__check" aria-hidden="true"></span>
         </span>

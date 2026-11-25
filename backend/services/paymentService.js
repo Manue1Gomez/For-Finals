@@ -9,6 +9,7 @@ const receiptEmailService = require('./receiptEmailService');
 const { toCents, fromCents, parseAmountToCents } = require('./money');
 const { requiredDownpaymentCents, statusAfterPayment } = require('./paymentRules');
 const { formatTimeRange, timeTextToMinutes, todayIso } = require('./timeHelper');
+const voucherRedemptionService = require('./voucherRedemptionService');
 
 const PAYMENT_METHODS = ['GCash', 'Cash'];
 const MAX_NOTE_LENGTH = 255;
@@ -197,7 +198,7 @@ async function rejectPayment(rawId, rawReason) {
     const bookingId = await paymentModel.findBookingId(connection, id);
     if (!bookingId) throw new AppError('Payment not found.', 404);
 
-    await bookingManagementModel.lockById(connection, bookingId);
+    const booking = await bookingManagementModel.lockById(connection, bookingId);
     const payment = await paymentModel.findForUpdate(connection, id);
 
     if (payment.status !== 'Pending') {
@@ -205,6 +206,7 @@ async function rejectPayment(rawId, rawReason) {
     }
 
     await paymentModel.markRejected(connection, id, reason);
+    await voucherRedemptionService.releaseIfNoActivePayment(connection, booking);
   });
 
   return { id, status: 'Rejected' };
@@ -216,6 +218,8 @@ async function handleNetcorepayWebhook(event) {
   const terminalStatuses = {
     'payment.failed': 'failed',
     'payment.expired': 'expired',
+    'payment.cancelled': 'cancelled',
+    'payment.canceled': 'canceled',
   };
   const isSuccess = eventType === 'payment.succeeded';
   const rejectedStatus = terminalStatuses[eventType];
@@ -279,8 +283,11 @@ async function handleNetcorepayWebhook(event) {
     if (!isSuccess) {
       const reason = rejectedStatus === 'expired'
         ? 'NetCorePay checkout expired before payment was completed.'
-        : 'NetCorePay reported that the payment failed.';
+        : rejectedStatus === 'cancelled' || rejectedStatus === 'canceled'
+          ? 'NetCorePay checkout was cancelled before payment was completed.'
+          : 'NetCorePay reported that the payment failed.';
       await paymentModel.markGatewayRejected(connection, payment.id, providerPaymentId, reason);
+      await voucherRedemptionService.releaseIfNoActivePayment(connection, booking);
       return { status: 'rejected' };
     }
 
@@ -354,7 +361,7 @@ async function recordPayment(body = {}) {
     throw new AppError('Please fix the highlighted fields.', 400, input.errors);
   }
 
-  return withTransaction(async (connection) => {
+  const result = await withTransaction(async (connection) => {
     const booking = await bookingManagementModel.lockById(connection, bookingId);
     if (!booking) throw new AppError('Booking not found.', 404);
 
@@ -381,7 +388,8 @@ async function recordPayment(body = {}) {
     const paidAfter = paidCents + amountCents;
     const statusAfter = statusAfterPayment(booking.status, paidAfter, totalCents);
 
-    await paymentModel.insertVerifiedByAdmin(connection, {
+    await voucherRedemptionService.consumeForBooking(connection, booking);
+    const paymentId = await paymentModel.insertVerifiedByAdmin(connection, {
       bookingId,
       type: paidCents === 0 ? 'Downpayment' : 'Balance',
       amount: fromCents(amountCents),
@@ -391,14 +399,29 @@ async function recordPayment(body = {}) {
     await bookingManagementModel.addToPaid(connection, bookingId, fromCents(amountCents));
     if (statusAfter !== booking.status) await bookingManagementModel.setStatus(connection, bookingId, statusAfter);
 
+    let outcome = receiptEmailService.OUTCOME.RECEIVED;
+    if (statusAfter !== booking.status) outcome = receiptEmailService.OUTCOME.CONFIRMED;
+    else if (booking.status === BOOKING_STATUS.TO_PAY) outcome = receiptEmailService.OUTCOME.PARTIAL_DOWNPAYMENT;
+
     return {
       bookingId,
+      paymentId,
+      outcome,
       recorded: fromCents(amountCents),
       bookingStatus: statusAfter,
       amountPaid: fromCents(paidAfter),
       balance: fromCents(totalCents - paidAfter),
     };
   });
+
+  const email = await sendReceipt({
+    paymentId: result.paymentId,
+    bookingId: result.bookingId,
+    outcome: result.outcome,
+  });
+  const { paymentId, outcome, ...response } = result;
+
+  return { ...response, email };
 }
 
 module.exports = {
@@ -407,4 +430,5 @@ module.exports = {
   rejectPayment,
   recordPayment,
   handleNetcorepayWebhook,
+  sendReceipt,
 };

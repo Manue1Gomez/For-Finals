@@ -190,7 +190,7 @@
       <div class="field voucher-form__limit">
         <label class="field__label" for="usageLimit">Usage Limit</label>
         <input class="field__input" id="usageLimit" name="usageLimit" type="text" inputmode="numeric" maxlength="4" required>
-        <p class="field__hint">How many times this voucher can be used in total.</p>
+        <p class="field__hint">Total redemptions allowed. This cannot be lower than the number already used.</p>
         <p class="field__error" hidden></p>
       </div>
 
@@ -227,8 +227,18 @@
       <p class="voucher-card__name"></p>
       <p class="voucher-card__period"></p>
 
+      <section class="voucher-card__usage" aria-label="Voucher usage">
+        <div class="voucher-card__usage-label">
+          <span>Uses remaining</span>
+          <strong class="voucher-card__remaining"></strong>
+        </div>
+        <div class="voucher-card__meter" role="progressbar" aria-label="Voucher redemptions" aria-valuemin="0" aria-valuenow="0" aria-valuemax="1">
+          <span class="voucher-card__meter-fill"></span>
+        </div>
+        <p class="voucher-card__usage-note"></p>
+      </section>
+
       <footer class="voucher-card__footer">
-        <span class="voucher-card__limit"></span>
         <button class="btn btn--sm" type="button" data-action="edit">Edit</button>
         <button class="btn btn--sm btn--danger" type="button" data-action="remove">Remove</button>
       </footer>

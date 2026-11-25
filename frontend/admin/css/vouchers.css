@@ -76,6 +76,13 @@
   display: flex;
   flex-direction: column;
   padding: 1rem 1.1rem 0.9rem;
+  border-top: 3px solid var(--color-brand);
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.voucher-card:hover {
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 8%);
+  transform: translateY(-2px);
 }
 
 .voucher-card__header {
@@ -99,6 +106,7 @@
   font-size: 2.75rem;
   line-height: 1.1;
   text-align: center;
+  color: var(--color-brand-dark);
 }
 
 .voucher-card__name {
@@ -109,32 +117,91 @@
 }
 
 .voucher-card__period {
-  flex: 1;
   margin-top: 0.6rem;
   font-size: 0.75rem;
   text-align: center;
   color: var(--color-muted);
 }
 
+.voucher-card__usage {
+  margin-top: 1rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 0.65rem;
+  background: #fff9f8;
+}
+
+.voucher-card__usage-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.voucher-card__usage-label strong {
+  color: var(--color-brand-dark);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.voucher-card__meter {
+  height: 0.45rem;
+  margin-top: 0.55rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f0dfdd;
+}
+
+.voucher-card__meter-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-brand);
+  transition: width 180ms ease;
+}
+
+.voucher-card__usage-note {
+  margin-top: 0.4rem;
+  color: var(--color-muted);
+  font-size: 0.7rem;
+}
+
 .voucher-card__footer {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 0.9rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--color-line-strong);
 }
 
-.voucher-card__limit {
-  margin-right: auto;
-  font-size: 0.8125rem;
-  font-weight: 500;
+.voucher-card__tag--exhausted {
+  color: #765500;
+  background: #fff1c2;
 }
 
 .voucher-card--expired .voucher-card__code,
 .voucher-card--expired .voucher-card__value,
 .voucher-card--expired .voucher-card__name {
   color: var(--color-muted);
+}
+
+.voucher-card--expired {
+  border-top-color: var(--color-line-strong);
+  filter: grayscale(1);
+}
+
+.voucher-card--expired .voucher-card__meter-fill,
+.voucher-card--exhausted .voucher-card__meter-fill {
+  background: var(--color-muted);
+}
+
+.voucher-card--expired .voucher-card__usage,
+.voucher-card--exhausted .voucher-card__usage {
+  background: #f8f8f8;
 }
 
 .voucher-empty {

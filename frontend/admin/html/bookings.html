@@ -175,6 +175,10 @@
         </section>
       </div>
 
+      <div class="dialog__actions">
+        <button class="btn" type="button" id="editScheduleButton" hidden>Edit schedule</button>
+      </div>
+
       <section>
         <h3 class="view-section__title">Services and payment</h3>
         <table class="mini-table">
@@ -194,6 +198,23 @@
         <button class="btn" type="button" id="viewContractButton"><span class="btn__icon btn__icon--file" aria-hidden="true"></span>Contract</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog class="dialog" id="scheduleDialog" aria-labelledby="scheduleDialogTitle">
+    <form class="dialog__form" id="scheduleForm" novalidate>
+      <h2 class="dialog__title" id="scheduleDialogTitle">Edit booking schedule</h2>
+      <div class="field">
+        <label class="field__label" for="scheduleDate">New date</label>
+        <input class="field__input" id="scheduleDate" name="eventDate" type="date" required>
+      </div>
+      <p class="status-message" id="scheduleSlotStatus" role="status"></p>
+      <div class="schedule-slots" id="scheduleSlots" role="group" aria-label="Available time slots"></div>
+      <p class="alert alert--error" id="scheduleError" role="alert" hidden></p>
+      <div class="dialog__actions">
+        <button class="btn" type="button" data-dialog-close>Cancel</button>
+        <button class="btn btn--primary" type="submit" id="scheduleSave">Save schedule</button>
+      </div>
+    </form>
   </dialog>
 
 

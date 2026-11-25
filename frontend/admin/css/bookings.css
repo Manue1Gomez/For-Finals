@@ -292,6 +292,29 @@
 
 .btn__icon--file { --icon: url('../AdminImages/icons/file-text.svg'); }
 
+.schedule-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.55rem;
+}
+
+.schedule-slot {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--color-ink-soft);
+  font: inherit;
+  cursor: pointer;
+}
+
+.schedule-slot--selected {
+  border-color: var(--color-brand);
+  color: var(--color-brand-dark);
+  background: #fff8f4;
+  box-shadow: 0 0 0 1px var(--color-brand);
+}
+
 @media (max-width: 45rem) {
   .view-grid,
   .field-row {

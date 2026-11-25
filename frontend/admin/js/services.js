@@ -24,6 +24,9 @@ const elements = {
   removeImageButton: document.getElementById('removeImageButton'),
   availableInput: document.getElementById('serviceAvailable'),
   availableLabel: document.getElementById('serviceAvailableLabel'),
+  durationField: document.getElementById('durationField'),
+  durationInput: document.getElementById('serviceDuration'),
+  priceInput: document.getElementById('servicePrice'),
 
   deleteDialog: document.getElementById('deleteDialog'),
   deleteMessage: document.getElementById('deleteMessage'),
@@ -75,6 +78,8 @@ function createCard(service) {
 
   card.querySelector('.service-card__name').textContent = service.name;
   card.querySelector('.service-card__price').textContent = formatPrice(service.price);
+  card.querySelector('.service-card__duration').textContent =
+    service.durationHours === null ? 'Whole day' : `${service.durationHours} hour${service.durationHours === 1 ? '' : 's'}`;
   card.querySelector('.service-card__status').title = service.available ? 'Active' : 'Inactive';
   description.textContent = service.description;
   description.title = service.description;
@@ -184,6 +189,8 @@ function openServiceDialog(service = null) {
   elements.serviceForm.elements.name.value = service?.name ?? '';
   elements.serviceForm.elements.description.value = service?.description ?? '';
   elements.serviceForm.elements.price.value = service?.price ?? '';
+  elements.durationInput.value = service?.durationHours ?? 2;
+  updateDurationField();
   elements.availableInput.checked = service ? service.available : true;
   setAvailabilityLabel(elements.availableLabel, elements.availableInput.checked);
 
@@ -192,6 +199,38 @@ function openServiceDialog(service = null) {
 
   elements.serviceDialog.showModal();
   elements.serviceForm.elements.name.focus();
+}
+
+function updateDurationField() {
+  const isWorkshop = /modeling workshop/i.test(elements.serviceForm.elements.name.value);
+  elements.durationField.hidden = isWorkshop;
+  elements.durationInput.required = !isWorkshop;
+  elements.durationInput.disabled = isWorkshop;
+  if (isWorkshop) elements.durationInput.value = '';
+  else if (!elements.durationInput.value) elements.durationInput.value = '2';
+}
+
+function canInsertPriceText(text) {
+  const { priceInput } = elements;
+  const start = priceInput.selectionStart ?? priceInput.value.length;
+  const end = priceInput.selectionEnd ?? start;
+  const nextValue = priceInput.value.slice(0, start) + text + priceInput.value.slice(end);
+
+  return /^\d{0,4}$/.test(nextValue);
+}
+
+function handlePriceBeforeInput(event) {
+  if (!event.inputType?.startsWith('insert') || event.data === null) return;
+  if (!canInsertPriceText(event.data)) event.preventDefault();
+}
+
+function handlePricePaste(event) {
+  const text = event.clipboardData?.getData('text') ?? '';
+  if (!canInsertPriceText(text)) event.preventDefault();
+}
+
+function sanitizePriceInput() {
+  elements.priceInput.value = elements.priceInput.value.replace(/\D/g, '').slice(0, 4);
 }
 
 function handleImageChosen() {
@@ -327,7 +366,11 @@ elements.serviceForm.addEventListener('input', ({ target }) => {
 
   field.classList.remove('field--invalid');
   field.querySelector('.field__error').hidden = true;
+  if (target === elements.serviceForm.elements.name) updateDurationField();
 });
+elements.priceInput.addEventListener('beforeinput', handlePriceBeforeInput);
+elements.priceInput.addEventListener('paste', handlePricePaste);
+elements.priceInput.addEventListener('input', sanitizePriceInput);
 elements.imageInput.addEventListener('change', handleImageChosen);
 elements.removeImageButton.addEventListener('click', handleRemoveImage);
 elements.availableInput.addEventListener('change', () =>

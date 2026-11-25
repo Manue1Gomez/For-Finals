@@ -227,6 +227,7 @@
               <p class="status-message" id="serviceGridStatus">Loading services…</p>
             </div>
             <p class="field__error" id="serviceError" hidden></p>
+            <p class="field__hint" id="workshopMessage" hidden>Modeling Workshop cannot be combined with any other service.</p>
           </div>
 
           <!-- Inline calendar date picker -->
@@ -253,21 +254,12 @@
             <p class="field__error" id="dateError" hidden></p>
           </div>
 
-          <div class="field-row-2">
-            <div class="field">
-              <label class="field__label" for="bookingStart">Start time</label>
-              <select class="field__input" id="bookingStart" name="startTime">
-                <option value="">Select start time</option>
-              </select>
-              <p class="field__error" hidden></p>
-            </div>
-            <div class="field">
-              <label class="field__label" for="bookingEnd">End time</label>
-              <select class="field__input" id="bookingEnd" name="endTime">
-                <option value="">Select end time</option>
-              </select>
-              <p class="field__error" hidden></p>
-            </div>
+          <div class="field">
+            <p class="field__label">Available time slots</p>
+            <p class="field__hint" id="bookingHoursNote"></p>
+            <p class="status-message" id="slotStatus">Choose services and a date to see available times.</p>
+            <div class="nb-slot-grid" id="availableSlots" role="group" aria-label="Available time slots"></div>
+            <p class="field__error" id="slotError" hidden></p>
           </div>
 
           <div class="field">
