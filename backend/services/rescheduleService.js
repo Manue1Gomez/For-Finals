@@ -1,12 +1,13 @@
 const AppError = require('./appError');
 const { withTransaction } = require('../config/db');
 const { RESCHEDULE_STATUS } = require('../config/bookingStatus');
-const { RESCHEDULABLE_STATUSES, SCHEDULE_CONFLICT_STATUSES } = require('../config/bookingRules');
-const blockedDateModel = require('../models/blockedDateModel');
+const { RESCHEDULABLE_STATUSES } = require('../config/bookingRules');
 const bookingManagementModel = require('../models/bookingManagementModel');
 const rescheduleModel = require('../models/rescheduleModel');
 const { splitServices } = require('../models/bookingSql');
 const { formatTimeRange } = require('./timeHelper');
+const availabilityService = require('./availabilityService');
+const workshopEmailService = require('./workshopEmailService');
 
 const NOT_FOUND_MESSAGE = 'Request not found or already reviewed.';
 
@@ -40,6 +41,7 @@ async function listRequests() {
 // because another booking may have taken it after the customer sent the request.
 async function approveRequest(rawId) {
   const id = parseRequestId(rawId);
+  let workshopReschedule = null;
 
   await withTransaction(async (connection) => {
     const request = await rescheduleModel.lockPendingById(connection, id);
@@ -52,31 +54,30 @@ async function approveRequest(rawId) {
       throw new AppError(`This booking is now ${booking.status} and can no longer be rescheduled. Reject the request instead.`, 409);
     }
 
-    if (await blockedDateModel.exists(request.newDate)) {
-      throw new AppError('The requested date is now marked unavailable. Reject the request or ask the customer to pick another date.', 409);
-    }
-
-    const serviceIds = await bookingManagementModel.findServiceIds(connection, booking.id);
-    const conflict = await bookingManagementModel.findConflict(connection, {
-      bookingId: booking.id,
+    const services = await bookingManagementModel.findBookingServices(connection, booking.id);
+    const schedule = await availabilityService.resolveSchedule(connection, {
       date: request.newDate,
       startTime: request.newStartTime,
-      endTime: request.newEndTime,
-      serviceIds,
-      statuses: SCHEDULE_CONFLICT_STATUSES,
+      serviceIds: services.map((service) => service.id),
+      services,
+      bookingId: booking.id,
     });
-
-    if (conflict) {
-      throw new AppError(`The requested schedule now conflicts with booking #${conflict.reference} (${conflict.serviceName}). Reject the request instead.`, 409);
-    }
 
     await bookingManagementModel.setSchedule(connection, booking.id, {
       eventDate: request.newDate,
-      startTime: request.newStartTime,
-      endTime: request.newEndTime,
+      startTime: schedule.startTime,
+      endTime: schedule.endTime,
     });
     await rescheduleModel.markReviewed(connection, id, RESCHEDULE_STATUS.APPROVED);
+
+    if (services.some((service) => /modeling workshop/i.test(service.name))) {
+      workshopReschedule = { bookingId: booking.id, oldEventDate: booking.eventDate };
+    }
   });
+
+  if (workshopReschedule) {
+    await workshopEmailService.sendWorkshopRescheduleEmail(workshopReschedule);
+  }
 
   return { id, status: RESCHEDULE_STATUS.APPROVED };
 }

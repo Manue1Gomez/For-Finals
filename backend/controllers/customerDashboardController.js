@@ -59,6 +59,19 @@ async function requestReschedule(req, res, next) {
   }
 }
 
+async function getRescheduleAvailability(req, res, next) {
+  try {
+    const result = await customerDashboardService.getRescheduleAvailability(
+      customerId(req),
+      req.params.id,
+      req.query.date
+    );
+    res.json(result);
+  } catch (error) {
+    sendError(error, res, next);
+  }
+}
+
 async function getProfile(req, res, next) {
   try {
     const profile = await customerDashboardService.getProfile(customerId(req));
@@ -93,6 +106,7 @@ module.exports = {
   startGCashPayment,
   applyVoucher,
   requestReschedule,
+  getRescheduleAvailability,
   getProfile,
   updateProfile,
   changePassword,

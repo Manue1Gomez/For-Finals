@@ -2,7 +2,7 @@ import { deleteRequest, getJson, sendJson } from './admin-api.js';
 
 const API_BASE = '/api/admin/calendar';
 const TOAST_DURATION_MS = 3500;
-const KEEP_SELECTION_AREAS = '.calendar, .day-panel, .blocked-panel, .sidebar, dialog, .toast';
+const KEEP_SELECTION_AREAS = '.calendar, .day-panel, .hourly-panel, .blocked-panel, .sidebar, dialog, .toast';
 
 const ICON_BAN = '<span class="btn__icon btn__icon--ban" aria-hidden="true"></span>';
 const ICON_CHECK = '<span class="btn__icon btn__icon--check" aria-hidden="true"></span>';
@@ -27,6 +27,7 @@ const elements = {
   bookingList: document.getElementById('bookingList'),
   bookingEmpty: document.getElementById('bookingEmpty'),
   bookingTemplate: document.getElementById('bookingItemTemplate'),
+  hourAvailability: document.getElementById('hourAvailability'),
   dayNote: document.getElementById('dayNote'),
   toggleBlock: document.getElementById('toggleBlockButton'),
   blockedList: document.getElementById('blockedList'),
@@ -59,6 +60,8 @@ const state = {
   bookedDates: new Set(),
   blockedDates: new Set(),
   day: null,
+  bookingHours: null,
+  hoursFailed: false,
   busy: false,
   pickerOpen: false,
   pickerYear: now.getFullYear(),
@@ -157,6 +160,116 @@ function createBookingItem(booking) {
   return item;
 }
 
+function formatHour(hour) {
+  const meridiem = hour >= 12 ? 'PM' : 'AM';
+  return `${hour % 12 || 12}:00 ${meridiem}`;
+}
+
+function intervalsOverlap(start, end, interval) {
+  return start < interval.endMinutes && end > interval.startMinutes;
+}
+
+function addHourAvailabilityMessage(message) {
+  const item = document.createElement('li');
+  item.className = 'hour-list__empty';
+  item.textContent = message;
+  elements.hourAvailability.replaceChildren(item);
+}
+
+function renderHourlyAvailability(day) {
+  if (!state.selectedDate) {
+    addHourAvailabilityMessage('Select a date to see its available hours.');
+    return;
+  }
+  if (!day) {
+    addHourAvailabilityMessage('Loading hourly availability...');
+    return;
+  }
+  if (state.hoursFailed) {
+    addHourAvailabilityMessage('Unable to load studio operating hours.');
+    return;
+  }
+  if (!state.bookingHours) {
+    addHourAvailabilityMessage('Loading studio operating hours...');
+    return;
+  }
+
+  const items = [];
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+  for (let hour = state.bookingHours.open; hour < state.bookingHours.close; hour += 1) {
+    const startMinutes = hour * 60;
+    const endMinutes = startMinutes + 60;
+    const booking = day.busyIntervals.some((interval) =>
+      intervalsOverlap(startMinutes, endMinutes, interval)
+    );
+    if (booking) continue;
+
+    const timeBlock = day.blockedTimes.find((interval) =>
+      intervalsOverlap(startMinutes, endMinutes, interval)
+    );
+    const isPastDate = state.selectedDate < today;
+    const hasStarted = state.selectedDate === today && startMinutes <= nowMinutes;
+
+    let status = 'available';
+    let statusLabel = 'Available';
+
+    if (timeBlock) {
+      status = 'blocked';
+      statusLabel = 'Blocked';
+    } else if (day.blocked) {
+      status = 'date-blocked';
+      statusLabel = 'Date blocked';
+    } else if (isPastDate || hasStarted) {
+      status = 'past';
+      statusLabel = 'Past';
+    }
+
+    const item = document.createElement('li');
+    item.className = `hour-list__item hour-list__item--${status}`;
+
+    const time = document.createElement('span');
+    time.className = 'hour-list__time';
+    time.textContent = `${formatHour(hour)} - ${formatHour(hour + 1)}`;
+
+    const availability = document.createElement('span');
+    availability.className = 'hour-list__status';
+    availability.textContent = statusLabel;
+
+    item.append(time, availability);
+
+    if (timeBlock && !booking) {
+      const button = document.createElement('button');
+      button.className = 'hour-list__action';
+      button.type = 'button';
+      button.textContent = 'Unblock';
+      button.disabled = state.busy;
+      button.dataset.action = 'unblock';
+      button.dataset.blockId = timeBlock.id;
+      item.append(button);
+    } else if (status === 'available') {
+      const button = document.createElement('button');
+      button.className = 'hour-list__action';
+      button.type = 'button';
+      button.textContent = 'Block';
+      button.disabled = state.busy;
+      button.dataset.action = 'block';
+      button.dataset.startTime = `${String(hour).padStart(2, '0')}:00`;
+      item.append(button);
+    }
+
+    items.push(item);
+  }
+
+  if (items.length === 0) {
+    addHourAvailabilityMessage('No unbooked hours to manage for this date.');
+    return;
+  }
+
+  elements.hourAvailability.replaceChildren(...items);
+}
+
 function renderToggleButton() {
   const { day, selectedDate } = state;
   const isPast = Boolean(selectedDate) && selectedDate < today;
@@ -179,6 +292,7 @@ function renderDayPanel() {
     elements.bookingList.replaceChildren();
     elements.bookingEmpty.textContent = 'Select a date on the calendar to see its bookings.';
     elements.bookingEmpty.hidden = false;
+    renderHourlyAvailability(null);
     renderToggleButton();
     return;
   }
@@ -195,6 +309,7 @@ function renderDayPanel() {
     elements.bookingEmpty.hidden = day.bookings.length > 0;
   }
 
+  renderHourlyAvailability(day);
   renderToggleButton();
 }
 
@@ -245,6 +360,29 @@ async function loadDay() {
     renderDayPanel();
   } catch (error) {
     if (requestId === latestDayRequest) showToast(error.message, 'error');
+  }
+}
+
+async function loadBookingHours() {
+  try {
+    const hours = await getJson('/api/calendar/hours');
+    const hourPattern = /^(?:[01]\d|2[0-3]):00$/;
+
+    if (!hourPattern.test(hours.open ?? '') || !hourPattern.test(hours.close ?? '')) {
+      throw new Error('The configured studio hours are invalid.');
+    }
+
+    const open = Number(hours.open.slice(0, 2));
+    const close = Number(hours.close.slice(0, 2));
+    if (close <= open) throw new Error('The configured studio hours are invalid.');
+
+    state.bookingHours = { open, close };
+    state.hoursFailed = false;
+    renderDayPanel();
+  } catch (error) {
+    state.hoursFailed = true;
+    showToast(error.message, 'error');
+    renderHourlyAvailability(state.day);
   }
 }
 
@@ -356,6 +494,7 @@ async function refreshAvailability() {
 async function runAction(action, successMessage) {
   state.busy = true;
   renderToggleButton();
+  renderHourlyAvailability(state.day);
 
   try {
     await action();
@@ -379,6 +518,20 @@ function unblockDate(isoDate) {
   return runAction(
     () => deleteRequest(`${API_BASE}/blocked-dates/${isoDate}`),
     `${formatLongDate(isoDate)} is available again.`
+  );
+}
+
+function blockTime(startTime) {
+  return runAction(
+    () => sendJson(`${API_BASE}/blocked-times`, 'POST', { date: state.selectedDate, startTime }),
+    `${formatHour(Number(startTime.slice(0, 2)))}-${formatHour(Number(startTime.slice(0, 2)) + 1)} is now blocked.`
+  );
+}
+
+function unblockTime(id) {
+  return runAction(
+    () => deleteRequest(`${API_BASE}/blocked-times/${id}`),
+    'The blocked hour is available again.'
   );
 }
 
@@ -432,6 +585,14 @@ elements.monthPickerGrid.addEventListener('click', (event) => {
 
 elements.toggleBlock.addEventListener('click', handleToggleBlock);
 
+elements.hourAvailability.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+
+  if (button.dataset.action === 'block') blockTime(button.dataset.startTime);
+  if (button.dataset.action === 'unblock') unblockTime(button.dataset.blockId);
+});
+
 elements.confirmBlock.addEventListener('click', () => {
   elements.blockDialog.close();
   blockDate(state.selectedDate);
@@ -478,3 +639,4 @@ renderDayPanel();
 loadMonth();
 loadDay();
 loadBlockedList();
+loadBookingHours();

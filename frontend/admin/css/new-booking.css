@@ -230,6 +230,35 @@
   margin-top: 0.15rem;
 }
 
+.nb-service-card__duration {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.nb-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.55rem;
+}
+
+.nb-slot {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--color-ink-soft);
+  font: inherit;
+  cursor: pointer;
+}
+
+.nb-slot--selected {
+  border-color: var(--color-brand);
+  background: var(--color-brand-tint);
+  box-shadow: 0 0 0 1px var(--color-brand);
+}
+
 /* ── Order summary ───────────────────────────────────────────── */
 
 .nb-summary {

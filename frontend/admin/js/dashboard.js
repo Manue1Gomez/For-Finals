@@ -1,7 +1,7 @@
 const API_BASE = '/api/admin/dashboard';
 
-const SCHEDULE_FIRST_HOUR = 8;
-const SCHEDULE_LAST_HOUR = 20;
+let scheduleFirstHour = null;
+let scheduleLastHour = null;
 
 const elements = {
   stats: document.querySelectorAll('[data-stat]'),
@@ -54,7 +54,12 @@ function fromIsoDate(isoDate) {
 
 function formatHourLabel(hour24) {
   const meridiem = hour24 >= 12 ? 'PM' : 'AM';
-  return `${hour24 % 12 || 12}${meridiem}`;
+  return `${hour24 % 12 || 12} ${meridiem}`;
+}
+
+function parseOperatingHour(value) {
+  if (!/^(?:[01]\d|2[0-3]):00$/.test(value ?? '')) return null;
+  return Number(value.slice(0, 2));
 }
 
 function showMessage(element, message) {
@@ -106,8 +111,8 @@ async function loadUpcomingBookings() {
 
 function createScheduleEvent(booking) {
   const event = elements.scheduleEventTemplate.content.firstElementChild.cloneNode(true);
-  const gridStart = SCHEDULE_FIRST_HOUR * 60;
-  const gridEnd = SCHEDULE_LAST_HOUR * 60;
+  const gridStart = scheduleFirstHour * 60;
+  const gridEnd = scheduleLastHour * 60;
 
   const start = Math.max(booking.startMinutes, gridStart);
   const end = Math.min(booking.endMinutes, gridEnd);
@@ -143,10 +148,10 @@ function createServiceColumn(column) {
 function createHourLabels() {
   const labels = [];
 
-  for (let hour = SCHEDULE_FIRST_HOUR; hour <= SCHEDULE_LAST_HOUR; hour += 1) {
+  for (let hour = scheduleFirstHour; hour <= scheduleLastHour; hour += 1) {
     const label = document.createElement('li');
     label.className = 'schedule__hour';
-    label.style.setProperty('--index', hour - SCHEDULE_FIRST_HOUR);
+    label.style.setProperty('--index', hour - scheduleFirstHour);
     label.textContent = formatHourLabel(hour);
     labels.push(label);
   }
@@ -162,7 +167,7 @@ function renderSchedule({ columns }) {
   }
 
   elements.schedule.style.setProperty('--column-count', columns.length);
-  elements.schedule.style.setProperty('--hour-count', SCHEDULE_LAST_HOUR - SCHEDULE_FIRST_HOUR);
+  elements.schedule.style.setProperty('--hour-count', scheduleLastHour - scheduleFirstHour);
 
   elements.scheduleServices.replaceChildren(...columns.map(createServiceHeading));
   elements.scheduleHours.replaceChildren(...createHourLabels());
@@ -178,6 +183,8 @@ function updateScheduleTitle() {
 }
 
 async function loadDaySchedule() {
+  if (scheduleFirstHour === null || scheduleLastHour === null) return;
+
   const requestId = ++latestScheduleRequest;
   updateScheduleTitle();
 
@@ -189,6 +196,29 @@ async function loadDaySchedule() {
     if (requestId !== latestScheduleRequest) return;
 
     console.error('Could not load day schedule:', error);
+    elements.schedule.hidden = true;
+    showMessage(elements.scheduleStatus, 'Unable to load the day schedule.');
+  }
+}
+
+async function loadScheduleHours() {
+  try {
+    const response = await fetch('/api/calendar/hours');
+    if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+
+    const hours = await response.json();
+    const openingHour = parseOperatingHour(hours.open);
+    const closingHour = parseOperatingHour(hours.close);
+
+    if (openingHour === null || closingHour === null || closingHour <= openingHour) {
+      throw new Error('The configured booking hours are invalid.');
+    }
+
+    scheduleFirstHour = openingHour;
+    scheduleLastHour = closingHour;
+    await loadDaySchedule();
+  } catch (error) {
+    console.error('Could not load dashboard booking hours:', error);
     elements.schedule.hidden = true;
     showMessage(elements.scheduleStatus, 'Unable to load the day schedule.');
   }
@@ -212,4 +242,4 @@ elements.goToToday.addEventListener('click', () => {
 
 loadSummary();
 loadUpcomingBookings();
-loadDaySchedule();
+loadScheduleHours();

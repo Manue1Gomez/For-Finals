@@ -99,45 +99,45 @@
     </header>
 
     <div class="calendar-layout">
-      <section class="panel calendar" aria-label="Monthly calendar">
-        <header class="calendar__header">
-          <button class="calendar__nav calendar__nav--previous" type="button" id="previousMonth" aria-label="Previous month"></button>
-          <div class="month-picker">
-            <h2 class="calendar__title">
-              <button class="calendar__title-button" type="button" id="monthPickerButton" aria-haspopup="true" aria-expanded="false" aria-controls="monthPicker">
-                <span id="calendarTitle" aria-live="polite"></span>
-                <span class="calendar__caret" aria-hidden="true"></span>
-              </button>
-            </h2>
+      <div class="calendar-layout__row">
+        <section class="panel calendar" aria-label="Monthly calendar">
+          <header class="calendar__header">
+            <button class="calendar__nav calendar__nav--previous" type="button" id="previousMonth" aria-label="Previous month"></button>
+            <div class="month-picker">
+              <h2 class="calendar__title">
+                <button class="calendar__title-button" type="button" id="monthPickerButton" aria-haspopup="true" aria-expanded="false" aria-controls="monthPicker">
+                  <span id="calendarTitle" aria-live="polite"></span>
+                  <span class="calendar__caret" aria-hidden="true"></span>
+                </button>
+              </h2>
 
-            <div class="month-picker__popover" id="monthPicker" role="group" aria-label="Choose a month and year" hidden>
-              <div class="month-picker__year">
-                <button class="month-picker__year-nav month-picker__year-nav--previous" type="button" id="previousYear" aria-label="Previous year"></button>
-                <span class="month-picker__year-label" id="pickerYear"></span>
-                <button class="month-picker__year-nav month-picker__year-nav--next" type="button" id="nextYear" aria-label="Next year"></button>
+              <div class="month-picker__popover" id="monthPicker" role="group" aria-label="Choose a month and year" hidden>
+                <div class="month-picker__year">
+                  <button class="month-picker__year-nav month-picker__year-nav--previous" type="button" id="previousYear" aria-label="Previous year"></button>
+                  <span class="month-picker__year-label" id="pickerYear"></span>
+                  <button class="month-picker__year-nav month-picker__year-nav--next" type="button" id="nextYear" aria-label="Next year"></button>
+                </div>
+                <div class="month-picker__grid" id="monthPickerGrid"></div>
               </div>
-              <div class="month-picker__grid" id="monthPickerGrid"></div>
             </div>
+            <button class="calendar__nav calendar__nav--next" type="button" id="nextMonth" aria-label="Next month"></button>
+          </header>
+
+          <div class="calendar__weekdays" aria-hidden="true">
+            <span>Sun</span><span>Mon</span><span>Tues</span><span>Wed</span><span>Thurs</span><span>Fri</span><span>Sat</span>
           </div>
-          <button class="calendar__nav calendar__nav--next" type="button" id="nextMonth" aria-label="Next month"></button>
-        </header>
+          <div class="calendar__grid" id="calendarGrid"></div>
 
-        <div class="calendar__weekdays" aria-hidden="true">
-          <span>Sun</span><span>Mon</span><span>Tues</span><span>Wed</span><span>Thurs</span><span>Fri</span><span>Sat</span>
-        </div>
-        <div class="calendar__grid" id="calendarGrid"></div>
+          <ul class="calendar__legend" aria-label="Legend">
+            <li class="legend-item"><span class="legend-item__swatch legend-item__swatch--unavailable"></span>Unavailable</li>
+            <li class="legend-item"><span class="legend-item__swatch"></span>Available</li>
+            <li class="legend-item"><span class="legend-item__swatch legend-item__swatch--past"></span>Past</li>
+            <li class="legend-item"><span class="legend-item__swatch legend-item__swatch--today"></span>Today</li>
+            <li class="legend-item"><span class="legend-item__swatch legend-item__swatch--selected"></span>Selected</li>
+            <li class="legend-item"><span class="legend-item__swatch legend-item__swatch--dot"></span>Has Bookings</li>
+          </ul>
+        </section>
 
-        <ul class="calendar__legend" aria-label="Legend">
-          <li class="legend-item"><span class="legend-item__swatch legend-item__swatch--unavailable"></span>Unavailable</li>
-          <li class="legend-item"><span class="legend-item__swatch"></span>Available</li>
-          <li class="legend-item"><span class="legend-item__swatch legend-item__swatch--past"></span>Past</li>
-          <li class="legend-item"><span class="legend-item__swatch legend-item__swatch--today"></span>Today</li>
-          <li class="legend-item"><span class="legend-item__swatch legend-item__swatch--selected"></span>Selected</li>
-          <li class="legend-item"><span class="legend-item__swatch legend-item__swatch--dot"></span>Has Bookings</li>
-        </ul>
-      </section>
-
-      <div class="calendar-side">
         <section class="panel day-panel" aria-labelledby="dayTitle">
           <h2 class="day-panel__title" id="dayTitle"></h2>
 
@@ -151,6 +151,16 @@
             <p class="day-panel__note" id="dayNote" hidden></p>
             <button class="btn btn--block btn--lg" type="button" id="toggleBlockButton"></button>
           </footer>
+        </section>
+      </div>
+
+      <div class="calendar-layout__row">
+        <section class="panel hourly-panel" aria-labelledby="hourAvailabilityTitle">
+          <h2 class="hourly-panel__title" id="hourAvailabilityTitle">Hourly Availability</h2>
+          <div class="hourly-panel__body">
+            <p class="hour-availability__hint">Select an available hour to block or unblock it.</p>
+            <ul class="hour-list" id="hourAvailability" aria-live="polite"></ul>
+          </div>
         </section>
 
         <section class="panel blocked-panel" aria-labelledby="blockedTitle">

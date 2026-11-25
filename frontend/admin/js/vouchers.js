@@ -30,29 +30,57 @@ let voucherToDelete = null;
 const findVoucher = (id) => vouchers.find((voucher) => voucher.id === Number(id));
 
 function formatDiscount(voucher) {
-  return voucher.discountType === 'Percentage' ? `${voucher.discountValue}%` : formatPeso(voucher.discountValue);
+  const value = Number(voucher.discountValue);
+  const safeValue = Number.isFinite(value) ? value : 0;
+  return voucher.discountType === 'Percentage' ? `${safeValue}%` : formatPeso(safeValue);
 }
 
 function matchesSearch(voucher, term) {
   return voucher.code.toLowerCase().includes(term) || voucher.name.toLowerCase().includes(term);
 }
 
+function toCount(value) {
+  const count = Number(value);
+  return Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
+}
+
+function getRemainingUses(voucher) {
+  if (voucher.remainingUses !== null && voucher.remainingUses !== undefined) {
+    const remaining = Number(voucher.remainingUses);
+    if (Number.isFinite(remaining)) return toCount(remaining);
+  }
+  return Math.max(0, toCount(voucher.usageLimit) - toCount(voucher.usedCount));
+}
+
 function createCard(voucher) {
   const card = elements.cardTemplate.content.firstElementChild.cloneNode(true);
   const tag = card.querySelector('.voucher-card__tag');
+  const usageLimit = toCount(voucher.usageLimit);
+  const usedCount = toCount(voucher.usedCount);
+  const remainingUses = getRemainingUses(voucher);
+  const usedPercent = usageLimit > 0 ? Math.min(100, (usedCount / usageLimit) * 100) : 0;
+  const meter = card.querySelector('.voucher-card__meter');
 
   card.dataset.id = voucher.id;
   card.classList.toggle('voucher-card--expired', voucher.expired);
+  card.classList.toggle('voucher-card--exhausted', !voucher.expired && remainingUses === 0);
 
   card.querySelector('.voucher-card__code').textContent = voucher.code;
   card.querySelector('.voucher-card__value').textContent = formatDiscount(voucher);
   card.querySelector('.voucher-card__name').textContent = voucher.name;
   card.querySelector('.voucher-card__period').textContent =
     `${formatDate(voucher.startDate)} \u2013 ${formatDate(voucher.endDate)}`;
-  card.querySelector('.voucher-card__limit').textContent = `Limit: ${voucher.usageLimit}`;
+  card.querySelector('.voucher-card__remaining').textContent = `${remainingUses} / ${usageLimit}`;
+  card.querySelector('.voucher-card__usage-note').textContent =
+    `${usedCount} of ${usageLimit} ${usageLimit === 1 ? 'use' : 'uses'} redeemed`;
+  meter.setAttribute('aria-valuenow', String(Math.min(usageLimit, usedCount)));
+  meter.setAttribute('aria-valuemax', String(usageLimit));
+  meter.setAttribute('aria-valuetext', `${usedCount} of ${usageLimit} redemptions used`);
+  card.querySelector('.voucher-card__meter-fill').style.width = `${usedPercent}%`;
 
-  tag.textContent = voucher.expired ? 'Expired' : '';
+  tag.textContent = voucher.expired ? 'Expired' : remainingUses === 0 ? 'Fully redeemed' : 'Active';
   tag.classList.toggle('tag--overdue', voucher.expired);
+  tag.classList.toggle('voucher-card__tag--exhausted', !voucher.expired && remainingUses === 0);
 
   card.querySelector('[data-action="edit"]').setAttribute('aria-label', `Edit ${voucher.code}`);
   card.querySelector('[data-action="remove"]').setAttribute('aria-label', `Remove ${voucher.code}`);
@@ -62,7 +90,8 @@ function createCard(voucher) {
 
 function renderSummary() {
   const expired = vouchers.filter((voucher) => voucher.expired).length;
-  const totals = { total: vouchers.length, available: vouchers.length - expired, expired };
+  const available = vouchers.filter((voucher) => !voucher.expired && getRemainingUses(voucher) > 0).length;
+  const totals = { total: vouchers.length, available, expired };
 
   Object.entries(totals).forEach(([name, value]) => {
     document.querySelector(`[data-stat="${name}"]`).textContent = value;
@@ -199,3 +228,6 @@ elements.confirmDelete.addEventListener('click', handleConfirmDelete);
 clearFieldOnInput(elements.voucherForm);
 enableDialogDismiss();
 loadVouchers();
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) loadVouchers();
+});

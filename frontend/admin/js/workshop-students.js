@@ -45,6 +45,7 @@ export function initWorkshopStudents({ onCountChange }) {
     rescheduleReference: document.getElementById('rescheduleReference'),
     rescheduleCurrent: document.getElementById('rescheduleCurrent'),
     rescheduleSubmit: document.getElementById('rescheduleSubmit'),
+    rescheduleError: document.querySelector('#rescheduleForm [role="alert"]'),
   };
 
   let students = [];
@@ -143,7 +144,7 @@ export function initWorkshopStudents({ onCountChange }) {
 
     elements.viewContact.replaceChildren();
     appendDetail(elements.viewContact, 'Email', booking.customer.email);
-    appendDetail(elements.viewContact, 'Contact number', booking.customer.contactNumber);
+    appendDetail(elements.viewContact, 'Contact number', booking.customer.contactNumber || NOT_PROVIDED);
 
     elements.viewSchedule.replaceChildren();
     appendDetail(elements.viewSchedule, 'Date', formatLongDate(booking.eventDate));
@@ -180,12 +181,11 @@ export function initWorkshopStudents({ onCountChange }) {
 
     elements.rescheduleReference.textContent = `Booking ID: #${student.reference}`;
     elements.rescheduleCurrent.textContent =
-      `${student.customerName} is currently scheduled on ${formatLongDate(student.eventDate)}, ${student.timeLabel}.`;
+      `${student.customerName} is currently scheduled for the full day on ${formatLongDate(student.eventDate)}.`;
 
     rescheduleForm.elements.eventDate.min = todayIso();
     rescheduleForm.elements.eventDate.value = student.eventDate;
-    rescheduleForm.elements.startTime.value = student.startTime;
-    rescheduleForm.elements.endTime.value = student.endTime;
+    elements.rescheduleError.hidden = true;
 
     elements.rescheduleSubmit.disabled = false;
     elements.rescheduleDialog.showModal();
@@ -203,12 +203,10 @@ export function initWorkshopStudents({ onCountChange }) {
     try {
       const result = await sendJson(`${API_BASE}/${reschedulingStudent.bookingId}/schedule`, 'PATCH', {
         eventDate: formData.get('eventDate'),
-        startTime: formData.get('startTime'),
-        endTime: formData.get('endTime'),
       });
 
       elements.rescheduleDialog.close();
-      showToast(`Workshop moved to ${formatDate(result.eventDate)}, ${result.timeLabel}.`);
+      showToast(`Workshop moved to ${formatDate(result.eventDate)}.`);
       await loadStudents();
     } catch (error) {
       showFormError(rescheduleForm, error);

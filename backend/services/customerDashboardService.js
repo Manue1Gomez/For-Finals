@@ -1,9 +1,9 @@
 const AppError = require('./appError');
 const { pool, withTransaction } = require('../config/db');
 const { BOOKING_STATUS } = require('../config/bookingStatus');
-const { RESCHEDULABLE_STATUSES, SCHEDULE_CONFLICT_STATUSES, BOOKING_HOURS } = require('../config/bookingRules');
-const blockedDateModel = require('../models/blockedDateModel');
+const { RESCHEDULABLE_STATUSES } = require('../config/bookingRules');
 const bookingManagementModel = require('../models/bookingManagementModel');
+const voucherModel = require('../models/voucherModel');
 const customerDashboardModel = require('../models/customerDashboardModel');
 const rescheduleModel = require('../models/rescheduleModel');
 const paymentModel = require('../models/paymentModel');
@@ -11,12 +11,15 @@ const customerModel = require('../models/customerModel');
 const { splitServices } = require('../models/bookingSql');
 const { toCents, fromCents } = require('./money');
 const { requiredDownpaymentCents } = require('./paymentRules');
-const { formatTimeRange, timeTextToMinutes, isValidIsoDate, todayIso } = require('./timeHelper');
+const { formatTimeRange, isValidIsoDate, todayIso } = require('./timeHelper');
 const netcorepayService = require('./netcorepayService');
 const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const availabilityService = require('./availabilityService');
+const { getScheduleDetails } = require('./serviceScheduleRules');
+const voucherRedemptionService = require('./voucherRedemptionService');
 
 // ─── Payment proof storage ────────────────────────────────────────────────────
 
@@ -136,7 +139,14 @@ async function getBookingDetails(customerId, rawId) {
     requiredDownpayment: fromCents(downpaymentCents),
     downpaymentPaid: paidCents >= downpaymentCents,
     voucherCode: booking.voucherCode || null,
-    services: services.map((s) => ({ id: s.id, name: s.name, price: fromCents(toCents(s.price)) })),
+    services: services.map((s) => ({
+      id: s.id,
+      name: s.name,
+      price: fromCents(toCents(s.price)),
+      durationHours: s.durationHours === null ? null : Number(s.durationHours),
+    })),
+    canReschedule: RESCHEDULABLE_STATUSES.includes(booking.status) &&
+      !services.some((service) => /modeling workshop/i.test(service.name)),
     payments: payments.map((p) => ({
       id: p.id,
       type: p.type,
@@ -178,6 +188,11 @@ async function submitPayment(customerId, rawBookingId, file) {
     const remainingCents = totalCents - paidCents;
 
     if (remainingCents <= 0) throw new AppError('This booking is already fully paid.', 409);
+    if (await paymentModel.findPendingForBooking(connection, bookingId)) {
+      throw new AppError('There is already a payment awaiting review for this booking.', 409);
+    }
+
+    await voucherRedemptionService.consumeForBooking(connection, booking);
 
     const type = paidCents === 0 ? 'Downpayment' : 'Balance';
     const amount = fromCents(paidCents === 0 ? requiredDownpaymentCents(totalCents) : remainingCents);
@@ -268,6 +283,7 @@ async function startGCashPayment(customerId, rawBookingId) {
         throw new AppError('There is already a payment awaiting verification or completion for this booking.', 409);
       }
 
+      await voucherRedemptionService.consumeForBooking(connection, booking);
       return {
         paymentId: existing.id,
         type: existing.type,
@@ -285,6 +301,7 @@ async function startGCashPayment(customerId, rawBookingId) {
       idempotencyKey,
     });
 
+    await voucherRedemptionService.consumeForBooking(connection, booking);
     return { paymentId, type, amountCents, idempotencyKey, providerPaymentId: null };
   });
 
@@ -311,32 +328,39 @@ async function startGCashPayment(customerId, rawBookingId) {
   } catch (error) {
     console.error(`Could not create or retrieve the NetCorePay checkout: ${error.message}`);
     if (error.status >= 400 && error.status < 500 && error.status !== 429) {
-      await withTransaction((connection) =>
-        paymentModel.markGatewayRejected(
+      await withTransaction(async (connection) => {
+        const booking = await bookingManagementModel.lockById(connection, bookingId);
+        await paymentModel.markGatewayRejected(
           connection,
           intent.paymentId,
           intent.providerPaymentId || intent.idempotencyKey,
           'NetCorePay could not create or retrieve the checkout.'
-        )
-      );
+        );
+        await voucherRedemptionService.releaseIfNoActivePayment(connection, booking);
+      });
     }
     throw new AppError('Could not start GCash checkout. Please try again in a moment.', 502);
   }
 
-  if (intent.providerPaymentId && ['failed', 'expired', 'refunded'].includes(payment.status)) {
-    const reason = payment.status === 'expired'
-      ? 'NetCorePay checkout expired before payment was completed.'
-      : payment.status === 'refunded'
-        ? 'NetCorePay payment was refunded before local confirmation.'
-        : 'NetCorePay reported that the payment failed.';
-    await withTransaction((connection) =>
-      paymentModel.markGatewayRejected(
+  if (intent.providerPaymentId && ['failed', 'expired', 'cancelled', 'canceled', 'refunded'].includes(payment.status)) {
+    let reason = 'NetCorePay reported that the payment failed.';
+    if (payment.status === 'expired') {
+      reason = 'NetCorePay checkout expired before payment was completed.';
+    } else if (payment.status === 'refunded') {
+      reason = 'NetCorePay payment was refunded before local confirmation.';
+    } else if (payment.status === 'cancelled' || payment.status === 'canceled') {
+      reason = 'NetCorePay checkout was cancelled before payment was completed.';
+    }
+    await withTransaction(async (connection) => {
+      const booking = await bookingManagementModel.lockById(connection, bookingId);
+      await paymentModel.markGatewayRejected(
         connection,
         intent.paymentId,
         intent.providerPaymentId,
         reason
-      )
-    );
+      );
+      await voucherRedemptionService.releaseIfNoActivePayment(connection, booking);
+    });
     throw new AppError('The previous GCash checkout is no longer active. Try again to start a new one.', 409);
   }
 
@@ -382,14 +406,7 @@ async function applyVoucher(customerId, rawBookingId, rawCode) {
     }
     if (booking.voucherCode) throw new AppError('A voucher has already been applied to this booking.', 409);
 
-    const [[voucher]] = await connection.query(
-      `SELECT voucher_id AS id, discount_type AS discountType, discount_value AS discountValue
-         FROM voucher
-        WHERE voucher_code = ?
-          AND CURDATE() BETWEEN start_date AND end_date
-          AND usage_limit > (SELECT COUNT(*) FROM booking b2 WHERE b2.voucher_code = voucher.voucher_code)`,
-      [code]
-    );
+    const voucher = await voucherModel.findAvailableForUse(connection, code, { forUpdate: true });
 
     if (!voucher) {
       throw new AppError('Invalid or expired voucher code.', 400, { voucherCode: 'Invalid or expired voucher code.' });
@@ -420,32 +437,14 @@ async function applyVoucher(customerId, rawBookingId, rawCode) {
 
 // ─── Reschedule request ───────────────────────────────────────────────────────
 
-const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
-
 async function requestReschedule(customerId, rawBookingId, body) {
   const bookingId = parseBookingId(rawBookingId);
   const newDate = String(body?.newDate ?? '').trim();
   const newStartTime = String(body?.newStartTime ?? '').trim();
-  const newEndTime = String(body?.newEndTime ?? '').trim();
 
   const errors = {};
   if (!isValidIsoDate(newDate)) errors.newDate = 'Choose a valid date.';
   else if (newDate < todayIso()) errors.newDate = 'Choose today or a future date.';
-  if (!TIME_PATTERN.test(newStartTime)) errors.newStartTime = 'Choose a start time.';
-  if (!TIME_PATTERN.test(newEndTime)) errors.newEndTime = 'Choose an end time.';
-
-  if (!errors.newStartTime && !errors.newEndTime) {
-    const opens = timeTextToMinutes(BOOKING_HOURS.open);
-    const closes = timeTextToMinutes(BOOKING_HOURS.close);
-    const start = timeTextToMinutes(newStartTime);
-    const end = timeTextToMinutes(newEndTime);
-
-    if (end <= start) errors.newEndTime = 'End time must be later than start time.';
-    else if (start < opens || end > closes) {
-      errors.newStartTime = `Bookings are accepted from ${BOOKING_HOURS.open} to ${BOOKING_HOURS.close} only.`;
-    }
-  }
-
   if (Object.keys(errors).length > 0) throw new AppError('Please fix the highlighted fields.', 400, errors);
 
   return withTransaction(async (connection) => {
@@ -457,54 +456,36 @@ async function requestReschedule(customerId, rawBookingId, body) {
       throw new AppError('Only confirmed or awaiting-payment bookings can be rescheduled.', 409);
     }
 
-    // Check if any selected service is Modeling Workshop
-    const serviceIds = await bookingManagementModel.findServiceIds(connection, bookingId);
-    const [[{ n }]] = await connection.query(
-      `SELECT COUNT(*) AS n
-         FROM service
-        WHERE service_id IN (?)
-          AND LOWER(service_name) LIKE '%modeling workshop%'`,
-      [serviceIds]
-    );
-
-    if (n > 0) {
+    const services = await bookingManagementModel.findBookingServices(connection, bookingId);
+    if (getScheduleDetails(services).isWorkshop) {
       throw new AppError(
         'Modeling Workshop can only be rescheduled by the studio owner.',
         409,
         { newDate: 'Modeling Workshop can only be rescheduled by the studio owner.' }
       );
     }
+    if (!newStartTime) {
+      throw new AppError('Choose an available time slot.', 400, {
+        newStartTime: 'Choose an available time slot.',
+      });
+    }
 
-    if (newDate === booking.eventDate && newStartTime === booking.startTime && newEndTime === booking.endTime) {
+    const schedule = await availabilityService.resolveSchedule(connection, {
+      date: newDate,
+      serviceIds: services.map((service) => service.id),
+      services,
+      startTime: newStartTime,
+      bookingId,
+    });
+
+    if (newDate === booking.eventDate && schedule.startTime === booking.startTime && schedule.endTime === booking.endTime) {
       throw new AppError('Choose a different date or time from your current schedule.', 400, {
         newDate: 'Choose a different date or time from your current schedule.',
       });
     }
 
-    // Check availability
-    if (await blockedDateModel.exists(newDate)) {
-      throw new AppError('This date is not available. Please choose another.', 409, {
-        newDate: 'This date is not available. Please choose another.',
-      });
-    }
-
-    const conflict = await bookingManagementModel.findConflict(connection, {
-      bookingId,
-      date: newDate,
-      startTime: newStartTime,
-      endTime: newEndTime,
-      serviceIds,
-      statuses: SCHEDULE_CONFLICT_STATUSES,
-    });
-
-    if (conflict) {
-      throw new AppError('This schedule is not available. Please choose another.', 409, {
-        newDate: 'This date or time is not available. Please choose another.',
-      });
-    }
-
     // One open request per booking: a new submission replaces the pending one
-    const requested = { date: newDate, startTime: newStartTime, endTime: newEndTime };
+    const requested = { date: newDate, startTime: schedule.startTime, endTime: schedule.endTime };
     const pendingId = await rescheduleModel.findPendingIdByBooking(connection, bookingId);
 
     if (pendingId) {
@@ -517,7 +498,35 @@ async function requestReschedule(customerId, rawBookingId, body) {
       });
     }
 
-    return { bookingId, newDate, newStartTime, newEndTime, rescheduleStatus: 'Pending' };
+    return {
+      bookingId,
+      newDate,
+      newStartTime: schedule.startTime,
+      newEndTime: schedule.endTime,
+      rescheduleStatus: 'Pending',
+    };
+  });
+}
+
+async function getRescheduleAvailability(customerId, rawBookingId, rawDate) {
+  const bookingId = parseBookingId(rawBookingId);
+  const booking = await customerDashboardModel.findOneByCustomer(customerId, bookingId);
+  if (!booking) throw new AppError('Booking not found.', 404);
+  if (!RESCHEDULABLE_STATUSES.includes(booking.status)) {
+    throw new AppError('Only confirmed or awaiting-payment bookings can be rescheduled.', 409);
+  }
+
+  const services = await bookingManagementModel.findBookingServices(pool, bookingId);
+  if (getScheduleDetails(services).isWorkshop) {
+    throw new AppError('Modeling Workshop can only be rescheduled by the studio owner.', 409);
+  }
+
+  return availabilityService.getAvailability({
+    date: String(rawDate ?? '').trim(),
+    serviceIds: services.map((service) => service.id),
+    executor: pool,
+    excludeBookingId: bookingId,
+    services,
   });
 }
 
@@ -637,6 +646,7 @@ module.exports = {
   startGCashPayment,
   applyVoucher,
   requestReschedule,
+  getRescheduleAvailability,
   updateProfile,
   changePassword,
   getProfile,

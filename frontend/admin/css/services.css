@@ -82,6 +82,12 @@
   line-height: 1.15;
 }
 
+.service-card__duration {
+  margin-top: 0.35rem;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
 .service-card__footer {
   display: flex;
   flex-wrap: wrap;

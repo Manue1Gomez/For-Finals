@@ -188,7 +188,7 @@ function closeDetailModal() {
 function renderDetail(booking) {
   const canPay = ['To Pay', 'Confirmed'].includes(booking.status) && booking.balance > 0;
   const canVoucher = booking.status === 'To Pay' && !booking.voucherCode;
-  const canReschedule = ['To Pay', 'Confirmed'].includes(booking.status);
+  const canReschedule = booking.canReschedule;
   const hasPendingReschedule = booking.rescheduleRequest?.status === 'Pending';
   const paidPercent = booking.totalAmount > 0
     ? Math.round((booking.amountPaid / booking.totalAmount) * 100)
@@ -408,17 +408,8 @@ function renderRescheduleSection() {
       </div>
 
       <div class="detail__reschedule-time">
-        <p style="font-size:1.1rem;font-weight:400;color:var(--color-ink-soft);margin-bottom:0.75rem;">Preferred time range</p>
-
-        <div class="form-field">
-          <label class="form-field__label" for="rTimeFrom">From:</label>
-          <select class="time-select" id="rTimeFrom"></select>
-        </div>
-
-        <div class="form-field">
-          <label class="form-field__label" for="rTimeTo">To:</label>
-          <select class="time-select" id="rTimeTo"></select>
-        </div>
+        <p class="detail__reschedule-slot-status" id="rSlotStatus">Choose a date to see available slots.</p>
+        <div class="detail__reschedule-slots" id="rSlots" role="group" aria-label="Available reschedule time slots"></div>
       </div>
 
       <p class="form-alert form-alert--error detail__alert" id="rescheduleAlert" role="alert" hidden></p>
@@ -433,45 +424,15 @@ function renderRescheduleSection() {
 
 // ─── Calendar for reschedule ──────────────────────────────────────────────────
 
-const OPEN_MINUTES = 7 * 60;
-const CLOSE_MINUTES = 19 * 60;
-const STEP_MINUTES = 30;
-const DEFAULT_FROM = '09:00';
-const DEFAULT_TO = '11:00';
-
 let rescheduleDate = null;
-
-function pad(v) { return String(v).padStart(2, '0'); }
-function toTime(minutes) { return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`; }
-function toMinutes(text) { const [h, m] = text.split(':').map(Number); return h * 60 + m; }
-
-function buildTimeOptions(select, fromMin, toMin, selectedValue) {
-  const opts = [];
-  for (let m = fromMin; m <= toMin; m += STEP_MINUTES) {
-    const o = document.createElement('option');
-    o.value = toTime(m);
-    o.textContent = formatTime(o.value);
-    opts.push(o);
-  }
-  select.replaceChildren(...opts);
-  select.value = selectedValue;
-}
+let rescheduleSlots = [];
+let selectedRescheduleSlot = null;
+let rescheduleAvailabilityRequest = 0;
 
 function bindRescheduleCalendar(bookingId) {
-  const timeFrom = document.getElementById('rTimeFrom');
-  const timeTo = document.getElementById('rTimeTo');
-
-  if (!timeFrom || !timeTo) return;
-
-  buildTimeOptions(timeFrom, OPEN_MINUTES, CLOSE_MINUTES - STEP_MINUTES, DEFAULT_FROM);
-  buildTimeOptions(timeTo, toMinutes(DEFAULT_FROM) + STEP_MINUTES, CLOSE_MINUTES, DEFAULT_TO);
-
-  timeFrom.addEventListener('change', () => {
-    const start = toMinutes(timeFrom.value);
-    const preferred = toMinutes(timeTo.value);
-    const target = preferred > start ? preferred : Math.min(start + 120, CLOSE_MINUTES);
-    buildTimeOptions(timeTo, start + STEP_MINUTES, CLOSE_MINUTES, toTime(target));
-  });
+  rescheduleDate = null;
+  rescheduleSlots = [];
+  selectedRescheduleSlot = null;
 
   createCalendar(
     {
@@ -481,10 +442,64 @@ function bindRescheduleCalendar(bookingId) {
       dayGrid: document.getElementById('rCalDays'),
       status: { hidden: true, textContent: '' }, // dummy status element
     },
-    (iso) => { rescheduleDate = iso; }
+    (iso) => {
+      rescheduleDate = iso;
+      selectedRescheduleSlot = null;
+      loadRescheduleAvailability(bookingId, iso);
+    }
   ).load();
 
+  document.getElementById('rSlots')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-start-time]');
+    if (!button) return;
+    selectedRescheduleSlot = rescheduleSlots.find((slot) => slot.startTime === button.dataset.startTime) ?? null;
+    renderRescheduleSlots();
+  });
   document.getElementById('rescheduleSubmit')?.addEventListener('click', () => submitReschedule(bookingId));
+}
+
+function renderRescheduleSlots() {
+  const slotsElement = document.getElementById('rSlots');
+  if (!slotsElement) return;
+
+  slotsElement.replaceChildren(...rescheduleSlots.map((slot) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'detail__reschedule-slot';
+    button.textContent = slot.label;
+    button.dataset.startTime = slot.startTime;
+    button.setAttribute('aria-pressed', String(selectedRescheduleSlot?.startTime === slot.startTime));
+    if (selectedRescheduleSlot?.startTime === slot.startTime) {
+      button.classList.add('detail__reschedule-slot--selected');
+    }
+    return button;
+  }));
+}
+
+async function loadRescheduleAvailability(bookingId, date) {
+  const request = ++rescheduleAvailabilityRequest;
+  const status = document.getElementById('rSlotStatus');
+  if (!status) return;
+  rescheduleSlots = [];
+  selectedRescheduleSlot = null;
+  status.textContent = 'Checking available slots...';
+  renderRescheduleSlots();
+
+  try {
+    const { ok, data } = await getJson(
+      `${API_BASE}/bookings/${bookingId}/reschedule-availability?date=${encodeURIComponent(date)}`
+    );
+    if (request !== rescheduleAvailabilityRequest) return;
+    if (!ok) throw new Error(data.message ?? 'Could not load available slots.');
+    rescheduleSlots = data.slots ?? [];
+    status.textContent = rescheduleSlots.length
+      ? `Available slots for ${data.durationHours} hour${data.durationHours === 1 ? '' : 's'}:`
+      : 'No time slots are available on this date. Please choose another date.';
+    renderRescheduleSlots();
+  } catch (error) {
+    if (request !== rescheduleAvailabilityRequest) return;
+    status.textContent = error.message || 'Unable to load available slots.';
+  }
 }
 
 // ─── API actions ──────────────────────────────────────────────────────────────
@@ -613,15 +628,17 @@ async function submitPayment(bookingId) {
 async function submitReschedule(bookingId) {
   const alertEl = document.getElementById('rescheduleAlert');
   const btn = document.getElementById('rescheduleSubmit');
-  const timeFrom = document.getElementById('rTimeFrom');
-  const timeTo = document.getElementById('rTimeTo');
-
   if (!alertEl || !btn) return;
 
   alertEl.hidden = true;
 
   if (!rescheduleDate) {
     alertEl.textContent = 'Please choose a new date.';
+    alertEl.hidden = false;
+    return;
+  }
+  if (!selectedRescheduleSlot) {
+    alertEl.textContent = 'Choose an available time slot.';
     alertEl.hidden = false;
     return;
   }
@@ -632,8 +649,7 @@ async function submitReschedule(bookingId) {
   try {
     const { ok, data } = await postJson(`${API_BASE}/bookings/${bookingId}/reschedule`, {
       newDate: rescheduleDate,
-      newStartTime: timeFrom.value,
-      newEndTime: timeTo.value,
+      newStartTime: selectedRescheduleSlot.startTime,
     });
 
     if (ok) {

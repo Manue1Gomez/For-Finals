@@ -5,11 +5,6 @@ import { formatLongDate, formatPeso, formatTime } from './format.js';
 import { setSubmitting, showAlert, showNetworkError } from './form-helpers.js';
 
 const LOGIN_PAGE = 'login.html';
-const OPEN_MINUTES = 7 * 60;
-const CLOSE_MINUTES = 19 * 60;
-const STEP_MINUTES = 30;
-const DEFAULT_FROM = '09:00';
-const DEFAULT_TO = '11:00';
 const GENERIC_ERROR_MESSAGE = 'Something went wrong. Please try again.';
 
 const panels = [...document.querySelectorAll('.booking-step')];
@@ -24,10 +19,10 @@ const serviceContinue = document.getElementById('serviceContinue');
 
 const scheduleError = document.getElementById('scheduleError');
 const scheduleContinue = document.getElementById('scheduleContinue');
-const timeFrom = document.getElementById('timeFrom');
-const timeTo = document.getElementById('timeTo');
-const bookedNotice = document.getElementById('bookedNotice');
-const bookedList = document.getElementById('bookedList');
+const availableSlots = document.getElementById('availableSlots');
+const slotStatus = document.getElementById('slotStatus');
+const workshopNotice = document.getElementById('workshopNotice');
+const bookingHoursNote = document.getElementById('bookingHoursNote');
 
 const summaryDetails = document.getElementById('summaryDetails');
 const summaryServices = document.getElementById('summaryServices');
@@ -50,21 +45,17 @@ const state = {
   services: [],
   selectedIds: new Set(),
   date: null,
-  bookedOnDate: [],
+  slots: [],
+  selectedSlot: null,
+  wholeDay: false,
+  dayAvailable: false,
+  durationHours: 0,
   bookingId: null,
   discountAmount: 0,
   pendingVoucherCode: null,
 };
 
-let bookedRequest = 0;
-
-const pad = (value) => String(value).padStart(2, '0');
-const toTime = (minutes) => `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
-
-function toMinutes(text) {
-  const [hours, minutes] = text.split(':').map(Number);
-  return hours * 60 + minutes;
-}
+let availabilityRequest = 0;
 
 const selectedServices = () => state.services.filter((service) => state.selectedIds.has(service.id));
 
@@ -81,7 +72,6 @@ function goToStep(step) {
   stepTitle.textContent = current.dataset.title;
   stepSubtitle.textContent = current.dataset.subtitle;
 
-  if (step === 2) renderBookedNotice();
   if (step === 3) renderSummary();
 
   window.scrollTo({ top: 0 });
@@ -96,6 +86,9 @@ function buildOption(service) {
   input.checked = state.selectedIds.has(service.id);
   item.querySelector('.service-option__name').textContent = service.name;
   item.querySelector('.service-option__price').textContent = formatPeso(service.price);
+  item.querySelector('.service-option__duration').textContent = service.durationHours === null
+    ? 'Full day'
+    : `${service.durationHours} hour${service.durationHours === 1 ? '' : 's'}`;
 
   if (service.imageUrl) {
     image.src = service.imageUrl;
@@ -132,6 +125,7 @@ async function loadServices() {
     if (data.some((service) => service.id === preselected)) state.selectedIds.add(preselected);
 
     serviceOptions.replaceChildren(...data.map(buildOption));
+    updateServiceSelectionControls();
     serviceContinue.disabled = state.selectedIds.size === 0;
     serviceStatus.hidden = true;
   } catch {
@@ -139,93 +133,103 @@ async function loadServices() {
   }
 }
 
-function buildTimeOptions(select, fromMinutes, toMinutesLimit, selectedValue, disabledRanges = []) {
-  const options = [];
+function isWorkshop(service) {
+  return /modeling workshop/i.test(service.name);
+}
 
-  for (let minutes = fromMinutes; minutes <= toMinutesLimit; minutes += STEP_MINUTES) {
-    const option = document.createElement('option');
+function updateServiceSelectionControls() {
+  const workshopSelected = selectedServices().some(isWorkshop);
+  const regularSelected = selectedServices().some((service) => !isWorkshop(service));
+  const inputs = [...serviceOptions.querySelectorAll('.service-option__input')];
 
-    option.value = toTime(minutes);
-    option.textContent = formatTime(option.value);
+  inputs.forEach((input) => {
+    const service = state.services.find((item) => item.id === Number(input.value));
+    input.disabled = (workshopSelected && !isWorkshop(service)) || (regularSelected && isWorkshop(service));
+  });
 
-    // Disable this slot if it falls inside any existing booking's time range
-    // A slot at `minutes` conflicts if any booking starts before the slot ends (slot + 30 min)
-    // and ends after the slot starts — i.e. the slot overlaps with the booked range.
-    const slotEnd = minutes + STEP_MINUTES;
-    const conflicts = disabledRanges.some(({ start, end }) => minutes < end && slotEnd > start);
-    if (conflicts) {
-      option.disabled = true;
-      option.textContent += ' (unavailable)';
-    }
+  workshopNotice.hidden = !workshopSelected;
+  workshopNotice.textContent = 'Modeling Workshop cannot be combined with any other service.';
+  serviceContinue.disabled = state.selectedIds.size === 0;
+  if (state.date) loadAvailability();
+}
 
-    options.push(option);
+function renderSlots() {
+  availableSlots.replaceChildren();
+
+  if (state.wholeDay) {
+    slotStatus.textContent = state.dayAvailable
+      ? 'Modeling Workshop is a full-day booking. No time selection is needed.'
+      : 'This date is unavailable for a Modeling Workshop.';
+    scheduleContinue.disabled = !state.dayAvailable;
+    return;
   }
 
-  select.replaceChildren(...options);
+  if (!state.date || state.selectedIds.size === 0) {
+    slotStatus.textContent = 'Choose services and a date to see available times.';
+    scheduleContinue.disabled = true;
+    return;
+  }
 
-  // Pick selectedValue if not disabled, otherwise pick the first available slot
-  const targetOption = options.find((o) => o.value === selectedValue && !o.disabled);
-  const firstAvailable = options.find((o) => !o.disabled);
-  select.value = targetOption ? selectedValue : (firstAvailable ? firstAvailable.value : selectedValue);
+  if (state.slots.length === 0) {
+    slotStatus.textContent = 'No time slots are available for the selected services on this date. Please choose another date.';
+    scheduleContinue.disabled = true;
+    return;
+  }
+
+  slotStatus.textContent = `Available slots for ${state.durationHours} hour${state.durationHours === 1 ? '' : 's'}:`;
+  availableSlots.replaceChildren(...state.slots.map((slot) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'schedule__slot';
+    button.textContent = slot.label;
+    button.setAttribute('aria-pressed', String(state.selectedSlot?.startTime === slot.startTime));
+    if (state.selectedSlot?.startTime === slot.startTime) button.classList.add('schedule__slot--selected');
+    button.addEventListener('click', () => {
+      state.selectedSlot = slot;
+      renderSlots();
+    });
+    return button;
+  }));
+  scheduleContinue.disabled = !state.selectedSlot;
 }
 
-function getConflictRanges() {
-  // Returns start/end minutes for bookings that match any of the selected services
-  const names = new Set(selectedServices().map((s) => s.name));
-  return state.bookedOnDate
-    .filter(({ serviceName }) => names.has(serviceName))
-    .map(({ startMinutes, endMinutes }) => ({ start: startMinutes, end: endMinutes }));
-}
-
-function renderTimePickers(preserveFrom, preserveTo) {
-  const conflicts = getConflictRanges();
-
-  buildTimeOptions(timeFrom, OPEN_MINUTES, CLOSE_MINUTES - STEP_MINUTES, preserveFrom ?? DEFAULT_FROM, conflicts);
-  renderEndTimes(preserveTo ?? DEFAULT_TO, conflicts);
-}
-
-function renderEndTimes(preferred, conflicts = getConflictRanges()) {
-  const start = toMinutes(timeFrom.value);
-  const preferredMinutes = toMinutes(preferred);
-  const target = preferredMinutes > start ? preferredMinutes : Math.min(start + 120, CLOSE_MINUTES);
-
-  buildTimeOptions(timeTo, start + STEP_MINUTES, CLOSE_MINUTES, toTime(target), conflicts);
-}
-
-function renderBookedNotice() {
-  const names = new Set(selectedServices().map((service) => service.name));
-  const rows = state.bookedOnDate.filter(({ serviceName }) => names.has(serviceName));
-
-  bookedList.replaceChildren(
-    ...rows.map(({ serviceName, timeLabel }) => {
-      const item = document.createElement('li');
-
-      item.textContent = `${serviceName}: ${timeLabel}`;
-      return item;
-    })
-  );
-  bookedNotice.hidden = rows.length === 0;
-}
-
-async function loadBookedOnDate(iso) {
-  const request = ++bookedRequest;
-
+async function loadAvailability(iso = state.date) {
+  const request = ++availabilityRequest;
   state.date = iso;
+  state.slots = [];
+  state.selectedSlot = null;
+  state.wholeDay = false;
+  state.dayAvailable = false;
+  state.durationHours = 0;
   scheduleError.hidden = true;
 
-  try {
-    const { ok, data } = await getJson(`/api/calendar/day?date=${iso}`);
-    if (request !== bookedRequest) return;
-
-    state.bookedOnDate = ok ? data.booked : [];
-  } catch {
-    if (request !== bookedRequest) return;
-    state.bookedOnDate = [];
+  if (!iso || state.selectedIds.size === 0) {
+    renderSlots();
+    return;
   }
 
-  // Rebuild time dropdowns with conflicting slots disabled
-  renderTimePickers(timeFrom.value, timeTo.value);
-  renderBookedNotice();
+  slotStatus.textContent = 'Checking available slots...';
+  scheduleContinue.disabled = true;
+
+  try {
+    const params = new URLSearchParams({
+      date: iso,
+      serviceIds: [...state.selectedIds].join(','),
+    });
+    const { ok, data } = await getJson(`/api/calendar/availability?${params}`);
+    if (request !== availabilityRequest) return;
+    if (!ok) throw new Error(data.message ?? 'Could not load available slots.');
+
+    state.slots = data.slots ?? [];
+    state.wholeDay = Boolean(data.wholeDay);
+    state.dayAvailable = Boolean(data.available);
+    state.durationHours = data.durationHours ?? 0;
+    renderSlots();
+  } catch (error) {
+    if (request !== availabilityRequest) return;
+    slotStatus.textContent = error.message || 'Unable to load available slots. Please try again.';
+    scheduleContinue.disabled = true;
+  }
 }
 
 function renderSummary() {
@@ -243,7 +247,9 @@ function renderSummary() {
     })
   );
   summaryDate.textContent = formatLongDate(state.date);
-  summaryTime.textContent = `${formatTime(timeFrom.value)} - ${formatTime(timeTo.value)}`;
+  summaryTime.textContent = state.wholeDay
+    ? 'Full day'
+    : (state.selectedSlot?.label ?? '—');
   if (summarySubtotal) summarySubtotal.textContent = formatPeso(subtotal);
   if (summaryDiscount) summaryDiscount.textContent = discount > 0 ? `−${formatPeso(discount)}` : '—';
   summaryTotal.textContent = formatPeso(total);
@@ -310,8 +316,7 @@ async function submitBooking() {
   const payload = {
     serviceIds: [...state.selectedIds],
     eventDate: state.date,
-    startTime: timeFrom.value,
-    endTime: timeTo.value,
+    ...(state.wholeDay ? {} : { startTime: state.selectedSlot?.startTime }),
     voucherCode: state.pendingVoucherCode ?? '',
   };
 
@@ -349,6 +354,14 @@ function continueToSummary() {
     showAlert(scheduleError, 'Please choose a date for your booking.');
     return;
   }
+  if (!state.wholeDay && !state.selectedSlot) {
+    showAlert(scheduleError, 'Choose an available time slot.');
+    return;
+  }
+  if (state.wholeDay && !state.dayAvailable) {
+    showAlert(scheduleError, 'Choose an available date for the Modeling Workshop.');
+    return;
+  }
 
   goToStep(3);
 }
@@ -359,16 +372,10 @@ serviceOptions.addEventListener('change', ({ target }) => {
   if (target.checked) state.selectedIds.add(id);
   else state.selectedIds.delete(id);
 
-  serviceContinue.disabled = state.selectedIds.size === 0;
+  updateServiceSelectionControls();
 });
 
-// When going to step 2, refresh time pickers with the now-selected services
-serviceContinue.addEventListener('click', () => {
-  goToStep(2);
-  if (state.date) renderTimePickers(timeFrom.value, timeTo.value);
-});
-
-timeFrom.addEventListener('change', () => renderEndTimes(timeTo.value));
+serviceContinue.addEventListener('click', () => goToStep(2));
 scheduleContinue.addEventListener('click', continueToSummary);
 submitButton.addEventListener('click', submitBooking);
 if (voucherApply) voucherApply.addEventListener('click', applyVoucher);
@@ -386,7 +393,7 @@ const calendar = createCalendar(
     dayGrid: document.getElementById('calendarDays'),
     status: document.getElementById('calendarStatus'),
   },
-  loadBookedOnDate
+  loadAvailability
 );
 
 async function init() {
@@ -394,9 +401,14 @@ async function init() {
   if (!customer) return;
 
   const requestedDate = new URLSearchParams(window.location.search).get('date');
-
-  buildTimeOptions(timeFrom, OPEN_MINUTES, CLOSE_MINUTES - STEP_MINUTES, DEFAULT_FROM);
-  renderEndTimes(DEFAULT_TO);
+  try {
+    const { ok, data } = await getJson('/api/calendar/hours');
+    bookingHoursNote.textContent = ok
+      ? `Studio hours: ${formatTime(data.open)} - ${formatTime(data.close)}.`
+      : 'Studio hours could not be loaded.';
+  } catch {
+    bookingHoursNote.textContent = 'Studio hours could not be loaded.';
+  }
   goToStep(1);
 
   await Promise.all([loadServices(), requestedDate ? calendar.show(requestedDate) : calendar.load()]);

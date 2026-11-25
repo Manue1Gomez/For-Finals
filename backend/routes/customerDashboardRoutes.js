@@ -9,6 +9,7 @@ router.use(requireCustomer);
 
 // Bookings list and detail
 router.get('/bookings', ctrl.listBookings);
+router.get('/bookings/:id/reschedule-availability', ctrl.getRescheduleAvailability);
 router.get('/bookings/:id', ctrl.getBookingDetails);
 
 // Payment proof upload

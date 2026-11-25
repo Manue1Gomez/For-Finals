@@ -86,7 +86,10 @@ async function findOneByCustomer(customerId, bookingId) {
 
 async function findServicesByBooking(bookingId) {
   const [rows] = await pool.query(
-    `SELECT s.service_id AS id, s.service_name AS name, bs.price AS price
+    `SELECT s.service_id AS id,
+            s.service_name AS name,
+            bs.price AS price,
+            s.duration_hours AS durationHours
        FROM booking_service bs
        JOIN service s ON s.service_id = bs.service_id
       WHERE bs.booking_id = ?

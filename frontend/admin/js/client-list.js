@@ -64,7 +64,7 @@ export function initClientList() {
     row.querySelector('.client-table__email').textContent = client.email;
     row.querySelector('.tag--workshop').hidden = !client.hasOngoingWorkshop;
 
-    row.querySelector('.client-table__contact').textContent = client.contactNumber;
+    row.querySelector('.client-table__contact').textContent = client.contactNumber || NOT_AVAILABLE;
     row.querySelector('.client-table__total').textContent = client.totalBookings;
     row.querySelector('.client-table__completed').textContent = hasBookings
       ? `${client.completedBookings} completed`
@@ -162,7 +162,7 @@ export function initClientList() {
 
     elements.dialogContact.replaceChildren();
     appendDetail(elements.dialogContact, 'Email', client.email);
-    appendDetail(elements.dialogContact, 'Contact number', client.contactNumber);
+    appendDetail(elements.dialogContact, 'Contact number', client.contactNumber || NOT_AVAILABLE);
 
     const statCards = [
       ['Bookings', stats.totalBookings],

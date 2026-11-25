@@ -6,11 +6,6 @@ const CLIENTS_API    = '/api/admin/clients';
 const WALK_IN_API    = '/api/admin/walk-in';
 const VOUCHER_API    = '/api/bookings/validate-voucher';
 const CALENDAR_API   = '/api/admin/calendar/month';
-const DAY_API        = '/api/admin/calendar/day';
-
-const OPEN_MIN  = 7 * 60;   // 07:00
-const CLOSE_MIN = 19 * 60;  // 19:00
-const STEP_MIN  = 30;
 
 // â”€â”€ DOM references â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -59,8 +54,11 @@ const calStatus         = document.getElementById('calStatus');
 const calSelected       = document.getElementById('calSelected');
 const dateError         = document.getElementById('dateError');
 
-const bookingStart   = document.getElementById('bookingStart');
-const bookingEnd     = document.getElementById('bookingEnd');
+const availableSlots = document.getElementById('availableSlots');
+const slotStatus     = document.getElementById('slotStatus');
+const slotError      = document.getElementById('slotError');
+const workshopMessage = document.getElementById('workshopMessage');
+const bookingHoursNote = document.getElementById('bookingHoursNote');
 const bookingAddress = document.getElementById('bookingAddress');
 const voucherCode    = document.getElementById('voucherCode');
 const voucherHint    = document.getElementById('voucherHint');
@@ -104,84 +102,20 @@ const state = {
   total: 0,
   step2Panel: null,
   selectedDate: null,       // ISO string e.g. "2026-11-15"
-  bookedSlots: [],          // [{ serviceNames, startMinutes, endMinutes }] from calendar/day
+  slots: [],
+  selectedSlot: null,
+  wholeDay: false,
+  dayAvailable: false,
+  durationHours: 0,
 };
 
 // ── Time slot helpers ──────────────────────────────────────────────────
-
-function minToTime(m) {
-  return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
-}
-
-function timeToMin(t) {
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-}
 
 function formatTime(t) {
   const [h, m] = t.split(':').map(Number);
   const suffix = h >= 12 ? 'PM' : 'AM';
   const h12    = h % 12 || 12;
   return `${h12}:${pad(m)} ${suffix}`;
-}
-
-// Returns booked {start, end} ranges that conflict with any currently selected service.
-function conflictRanges() {
-  const selectedNames = new Set(
-    state.services
-      .filter((s) => state.selectedServiceIds.has(s.id))
-      .map((s) => s.name)
-  );
-
-  return state.bookedSlots
-    .filter((slot) => {
-      // slot.serviceNames is a comma-separated string from the API
-      const names = String(slot.serviceNames ?? '').split(',').map((n) => n.trim());
-      return names.some((n) => selectedNames.has(n));
-    })
-    .map((slot) => ({ start: slot.startMinutes, end: slot.endMinutes }));
-}
-
-function buildStartOptions(preservedValue) {
-  const conflicts = conflictRanges();
-  const opts = [new Option('Select start time', '')];
-
-  for (let m = OPEN_MIN; m < CLOSE_MIN; m += STEP_MIN) {
-    const val = minToTime(m);
-    const slotEnd = m + STEP_MIN;
-    const blocked = conflicts.some(({ start, end }) => m < end && slotEnd > start);
-    const opt = new Option(blocked ? `${formatTime(val)} (unavailable)` : formatTime(val), val);
-    opt.disabled = blocked;
-    opts.push(opt);
-  }
-
-  bookingStart.replaceChildren(...opts);
-  // Restore previous selection if still valid
-  if (preservedValue && !opts.find((o) => o.value === preservedValue && o.disabled)) {
-    bookingStart.value = preservedValue;
-  }
-
-  buildEndOptions(bookingEnd.value || '');
-}
-
-function buildEndOptions(preservedValue) {
-  const startMin = timeToMin(bookingStart.value || minToTime(OPEN_MIN));
-  const conflicts = conflictRanges();
-  const opts = [new Option('Select end time', '')];
-
-  for (let m = startMin + STEP_MIN; m <= CLOSE_MIN; m += STEP_MIN) {
-    const val = minToTime(m);
-    // A slot [startMin, m] conflicts if any booked range overlaps it
-    const blocked = conflicts.some(({ start, end }) => startMin < end && m > start);
-    const opt = new Option(blocked ? `${formatTime(val)} (unavailable)` : formatTime(val), val);
-    opt.disabled = blocked;
-    opts.push(opt);
-  }
-
-  bookingEnd.replaceChildren(...opts);
-  if (preservedValue && !opts.find((o) => o.value === preservedValue && o.disabled)) {
-    bookingEnd.value = preservedValue;
-  }
 }
 
 // â”€â”€ Calendar state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -285,25 +219,89 @@ function calSelect(iso) {
   });
 
   calSelected.textContent = formatLongDate(iso);
-  loadDaySlots(iso);
+  loadAvailability();
 }
 
-let dayRequest = 0;
+let availabilityRequest = 0;
 
-async function loadDaySlots(iso) {
-  const reqId = ++dayRequest;
-  state.bookedSlots = [];
+function isWorkshopService(service) {
+  return /modeling workshop/i.test(service.name);
+}
 
-  try {
-    const data = await getJson(`${DAY_API}?date=${iso}`);
-    if (reqId !== dayRequest) return;
-    state.bookedSlots = data.bookings ?? [];
-  } catch {
-    if (reqId !== dayRequest) return;
-    state.bookedSlots = [];
+function updateWorkshopSelection() {
+  const selected = state.services.filter((service) => state.selectedServiceIds.has(service.id));
+  const workshopSelected = selected.some(isWorkshopService);
+  const regularSelected = selected.some((service) => !isWorkshopService(service));
+
+  serviceGrid.querySelectorAll('.nb-service-card').forEach((button) => {
+    const service = state.services.find((item) => item.id === Number(button.dataset.id));
+    button.disabled = (workshopSelected && !isWorkshopService(service)) ||
+      (regularSelected && isWorkshopService(service));
+  });
+  workshopMessage.hidden = !workshopSelected;
+}
+
+function renderAvailableSlots() {
+  availableSlots.replaceChildren();
+
+  if (state.wholeDay) {
+    slotStatus.textContent = state.dayAvailable
+      ? 'Modeling Workshop is a full-day booking. No time selection is needed.'
+      : 'This date is unavailable for a Modeling Workshop.';
+    return;
+  }
+  if (!state.selectedDate || state.selectedServiceIds.size === 0) {
+    slotStatus.textContent = 'Choose services and a date to see available times.';
+    return;
+  }
+  if (state.slots.length === 0) {
+    slotStatus.textContent = 'No time slots are available for the selected services on this date.';
+    return;
   }
 
-  buildStartOptions(bookingStart.value);
+  slotStatus.textContent = `Available slots for ${state.durationHours} hour${state.durationHours === 1 ? '' : 's'}:`;
+  availableSlots.replaceChildren(...state.slots.map((slot) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'nb-slot';
+    button.textContent = slot.label;
+    button.dataset.startTime = slot.startTime;
+    button.setAttribute('aria-pressed', String(state.selectedSlot?.startTime === slot.startTime));
+    if (state.selectedSlot?.startTime === slot.startTime) button.classList.add('nb-slot--selected');
+    return button;
+  }));
+}
+
+async function loadAvailability() {
+  const reqId = ++availabilityRequest;
+  state.slots = [];
+  state.selectedSlot = null;
+  state.wholeDay = false;
+  state.dayAvailable = false;
+  slotError.hidden = true;
+
+  if (!state.selectedDate || state.selectedServiceIds.size === 0) {
+    renderAvailableSlots();
+    return;
+  }
+
+  slotStatus.textContent = 'Checking available slots...';
+  try {
+    const params = new URLSearchParams({
+      date: state.selectedDate,
+      serviceIds: [...state.selectedServiceIds].join(','),
+    });
+    const data = await getJson(`/api/calendar/availability?${params}`);
+    if (reqId !== availabilityRequest) return;
+    state.slots = data.slots ?? [];
+    state.wholeDay = Boolean(data.wholeDay);
+    state.dayAvailable = Boolean(data.available);
+    state.durationHours = data.durationHours ?? 0;
+    renderAvailableSlots();
+  } catch (error) {
+    if (reqId !== availabilityRequest) return;
+    slotStatus.textContent = error.message || 'Available slots could not be loaded.';
+  }
 }
 
 calGrid.addEventListener('click', (e) => {
@@ -504,7 +502,17 @@ function validateNewCustomer() {
 async function goToStep3() {
   showPanel(step3);
   setStep(3);
-  await Promise.all([loadServices(), calLoadMonth()]);
+  const results = await Promise.all([
+    loadServices(),
+    calLoadMonth(),
+    getJson('/api/calendar/hours').catch(() => null),
+  ]);
+  const hoursResult = results[2];
+  if (hoursResult?.open && hoursResult?.close) {
+    bookingHoursNote.textContent = `Studio hours: ${formatTime(hoursResult.open)} - ${formatTime(hoursResult.close)}.`;
+  } else {
+    bookingHoursNote.textContent = 'Studio hours could not be loaded.';
+  }
   refreshSummary();
 }
 
@@ -533,6 +541,7 @@ async function loadServices() {
       btn.innerHTML = `
         <span class="nb-service-card__name">${service.name}</span>
         <span class="nb-service-card__price">${peso(service.price)}</span>
+        <span class="nb-service-card__duration">${service.durationHours === null ? 'Full day' : `${service.durationHours} hour${service.durationHours === 1 ? '' : 's'}`}</span>
       `;
       btn.addEventListener('click', () => toggleService(service, btn));
       serviceGrid.appendChild(btn);
@@ -556,10 +565,10 @@ function toggleService(service, btn) {
     state.selectedServiceIds.add(service.id);
     btn.classList.add('nb-service-card--selected');
   }
+  updateWorkshopSelection();
   serviceError.hidden = true;
   refreshSummary();
-  // Rebuild time dropdowns — conflicts depend on which services are selected
-  if (state.selectedDate) buildStartOptions(bookingStart.value);
+  loadAvailability();
 }
 
 function refreshSummary() {
@@ -632,8 +641,12 @@ applyVoucherBtn.addEventListener('click', async () => {
   }
 });
 
-// Rebuild end times when start changes
-bookingStart.addEventListener('change', () => buildEndOptions(bookingEnd.value));
+availableSlots.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-start-time]');
+  if (!button) return;
+  state.selectedSlot = state.slots.find((slot) => slot.startTime === button.dataset.startTime) ?? null;
+  renderAvailableSlots();
+});
 
 continueFromBooking.addEventListener('click', () => {
   clearAllErrors(step3);
@@ -655,18 +668,14 @@ continueFromBooking.addEventListener('click', () => {
     valid = false;
   }
 
-  if (!bookingStart.value) {
-    setFieldErr(bookingStart, 'Choose a start time.');
+  if (!state.wholeDay && !state.selectedSlot) {
+    slotError.textContent = 'Choose an available time slot.';
+    slotError.hidden = false;
     valid = false;
   }
-
-  if (!bookingEnd.value) {
-    setFieldErr(bookingEnd, 'Choose an end time.');
-    valid = false;
-  }
-
-  if (bookingStart.value && bookingEnd.value && bookingEnd.value <= bookingStart.value) {
-    setFieldErr(bookingEnd, 'End time must be later than the start time.');
+  if (state.wholeDay && !state.dayAvailable) {
+    slotError.textContent = 'Choose an available date for the Modeling Workshop.';
+    slotError.hidden = false;
     valid = false;
   }
 
@@ -765,8 +774,7 @@ function buildPayload() {
   const booking = {
     serviceIds:   [...state.selectedServiceIds],
     eventDate:    state.selectedDate,
-    startTime:    bookingStart.value,
-    endTime:      bookingEnd.value,
+    ...(state.wholeDay ? {} : { startTime: state.selectedSlot?.startTime }),
     eventAddress: bookingAddress.value.trim() || null,
     voucherCode:  state.voucher?.voucherCode || null,
   };
@@ -793,7 +801,10 @@ anotherBookingBtn.addEventListener('click', () => {
   state.subtotal     = 0;
   state.total        = 0;
   state.selectedDate = null;
-  state.bookedSlots  = [];
+  state.slots = [];
+  state.selectedSlot = null;
+  state.wholeDay = false;
+  state.dayAvailable = false;
 
   lookupEmail.value = '';
   foundCustomer.hidden    = true;
@@ -803,8 +814,11 @@ anotherBookingBtn.addEventListener('click', () => {
   serviceGrid.querySelectorAll('.nb-service-card--selected').forEach((c) => c.classList.remove('nb-service-card--selected'));
   calGrid.querySelectorAll('.nb-cal__day--selected').forEach((c) => c.classList.remove('nb-cal__day--selected'));
   calSelected.textContent = 'No date selected';
-  bookingStart.replaceChildren(new Option('Select start time', ''));
-  bookingEnd.replaceChildren(new Option('Select end time', ''));
+  availableSlots.replaceChildren();
+  slotStatus.textContent = 'Choose services and a date to see available times.';
+  slotError.hidden = true;
+  workshopMessage.hidden = true;
+  updateWorkshopSelection();
   bookingAddress.value = '';
   voucherCode.value   = '';
   voucherHint.hidden  = true;

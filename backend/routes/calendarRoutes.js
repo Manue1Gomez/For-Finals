@@ -5,5 +5,7 @@ const router = express.Router();
 
 router.get('/blocked-dates', calendarController.getBlockedDatesInMonth);
 router.get('/day', calendarController.getPublicDayAvailability);
+router.get('/hours', calendarController.getBookingHours);
+router.get('/availability', calendarController.getAvailability);
 
 module.exports = router;

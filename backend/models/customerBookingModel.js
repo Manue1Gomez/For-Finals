@@ -4,6 +4,7 @@ async function findAvailableServices(connection, serviceIds) {
   const [rows] = await connection.query(
     `SELECT service_id AS id,
             service_name AS name,
+            duration_hours AS durationHours,
             price
        FROM service
       WHERE availability = 1

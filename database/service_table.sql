@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS service (
   service_name  VARCHAR(100)  NOT NULL,
   description   VARCHAR(500)  NOT NULL,
   price         DECIMAL(10,2) NOT NULL,
+  duration_hours INT          NULL DEFAULT 2,
   image_path    VARCHAR(255)  NULL DEFAULT NULL,
   availability  TINYINT(1)    NOT NULL DEFAULT 1,
   created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
