@@ -29,6 +29,15 @@ const statusClass = (status) => ({
   'Rejected': 'rejected',
 }[status] ?? 'pending');
 
+const INCOMING_STATUSES = new Set(['Pending', 'To Pay', 'Confirmed']);
+
+function localDateIso() {
+  const date = new Date();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 function formatMinutes(totalMinutes) {
   const hours24 = Math.floor(totalMinutes / 60);
   const minutes = String(totalMinutes % 60).padStart(2, '0');
@@ -71,10 +80,49 @@ async function loadBookings(status) {
     }
 
     listStatus.hidden = true;
-    bookingList.replaceChildren(...bookings.map(buildCard));
+    bookingList.replaceChildren(...renderBookings(bookings, status));
   } catch {
     listStatus.textContent = 'Unable to reach the server. Please check your connection.';
   }
+}
+
+function renderBookings(bookings, status) {
+  const today = localDateIso();
+  const isIncoming = (booking) =>
+    INCOMING_STATUSES.has(booking.status) && booking.eventDate >= today;
+  const incoming = bookings
+    .filter(isIncoming)
+    .sort((first, second) =>
+      first.eventDate.localeCompare(second.eventDate) || Number(first.id) - Number(second.id)
+    );
+  const remaining = bookings.filter((booking) => !isIncoming(booking));
+  const items = [];
+
+  if (incoming.length > 0) {
+    const heading = document.createElement('li');
+    heading.className = 'booking-cards__group booking-cards__group--incoming';
+    heading.textContent = 'Incoming Bookings';
+    items.push(heading, ...(status ? incoming.map(buildCard) : renderStatusGroups(incoming)));
+  }
+
+  if (status) return [...items, ...remaining.map(buildCard)];
+
+  return [...items, ...renderStatusGroups(remaining)];
+}
+
+function renderStatusGroups(bookings) {
+  const groups = new Map();
+  bookings.forEach((booking) => {
+    if (!groups.has(booking.status)) groups.set(booking.status, []);
+    groups.get(booking.status).push(booking);
+  });
+
+  return [...groups].flatMap(([groupStatus, groupBookings]) => {
+    const heading = document.createElement('li');
+    heading.className = 'booking-cards__group';
+    heading.textContent = groupStatus;
+    return [heading, ...groupBookings.map(buildCard)];
+  });
 }
 
 function buildCard(booking) {

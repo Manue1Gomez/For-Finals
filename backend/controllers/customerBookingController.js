@@ -12,7 +12,7 @@ async function create(req, res, next) {
 
 async function availability(req, res, next) {
   try {
-    res.json(await customerBookingService.getAvailability(req.query));
+    res.json(await customerBookingService.getAvailability(req.query, req.session.customer.id));
   } catch (error) {
     sendError(error, res, next);
   }

@@ -59,11 +59,23 @@
   place-items: center;
   width: 1.9rem;
   height: 1.9rem;
+  padding: 0;
+  font-family: inherit;
   font-size: 0.9375rem;
   color: var(--color-brand-dark);
   background: var(--color-surface);
   border: 2px solid var(--color-brand);
   border-radius: 50%;
+  cursor: pointer;
+}
+
+.stepper__dot:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 3px;
+}
+
+.stepper__dot:disabled {
+  cursor: default;
 }
 
 .stepper__step.is-reached .stepper__dot {
@@ -351,10 +363,6 @@
   margin-bottom: 0.3rem;
   font-weight: 700;
   color: #8f1d1f;
-}
-
-.schedule__booked-list li + li {
-  margin-top: 0.15rem;
 }
 
 .booking-step .form-alert {

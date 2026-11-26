@@ -12,7 +12,8 @@ export function createCalendar({ monthLabel, prevButton, nextButton, dayGrid, st
   const todayIso = toIso(today.getFullYear(), today.getMonth(), today.getDate());
   const view = { year: today.getFullYear(), month: today.getMonth() };
 
-  let blockedDates = new Set(); // dates admin has manually blocked
+  let blockedDates = new Set();
+  let bookedDates = new Set();
   let selectedDate = null;
   let monthRequest = 0;
 
@@ -34,6 +35,9 @@ export function createCalendar({ monthLabel, prevButton, nextButton, dayGrid, st
       button.disabled = true;
       button.classList.add('is-blocked');
       button.setAttribute('aria-label', `${longDate(view.year, view.month, day)}, unavailable`);
+    } else if (bookedDates.has(iso)) {
+      button.classList.add('is-booked');
+      button.setAttribute('aria-label', `${longDate(view.year, view.month, day)}, has bookings; available times may be limited`);
     }
 
     if (iso === selectedDate) {
@@ -63,17 +67,19 @@ export function createCalendar({ monthLabel, prevButton, nextButton, dayGrid, st
     const month = `${view.year}-${pad(view.month + 1)}`;
 
     try {
-      const { ok, data } = await getJson(`/api/calendar/blocked-dates?month=${month}`);
+      const { ok, data } = await getJson(`/api/calendar/month?month=${month}`);
       if (request !== monthRequest) return;
 
       if (!ok) throw new Error('Request failed');
 
       blockedDates = new Set(data.blockedDates ?? []);
+      bookedDates = new Set(data.bookedDates ?? []);
       status.hidden = true;
     } catch {
       if (request !== monthRequest) return;
 
       blockedDates = new Set();
+      bookedDates = new Set();
       status.textContent = 'Unavailable dates could not be loaded.';
       status.hidden = false;
     }

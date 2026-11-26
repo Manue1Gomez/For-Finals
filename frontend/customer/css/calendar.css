@@ -60,6 +60,7 @@
 }
 
 .calendar__day {
+  position: relative;
   aspect-ratio: 1;
   font-size: 1rem;
   background: var(--color-surface);
@@ -90,10 +91,36 @@
   background: #c8cacf;
 }
 
+.calendar__day.is-booked:not(.is-selected) {
+  border-color: var(--color-brand);
+}
+
+.calendar__day.is-booked::after {
+  position: absolute;
+  right: 0.25rem;
+  bottom: 0.25rem;
+  width: 0.35rem;
+  height: 0.35rem;
+  content: '';
+  background: var(--color-brand);
+  border-radius: 50%;
+}
+
+.calendar__day.is-booked.is-selected::after {
+  background: #fff;
+}
+
 .calendar__day.is-past {
   cursor: default;
   color: var(--color-placeholder);
   border-color: #dcdce0;
+}
+
+.calendar__legend {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  text-align: center;
+  color: var(--color-ink-soft);
 }
 
 .calendar__status {

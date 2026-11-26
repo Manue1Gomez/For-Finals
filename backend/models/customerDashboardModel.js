@@ -16,15 +16,6 @@ const FIRST_IMAGE_SUBQUERY = `(
    LIMIT 1
 )`;
 
-const STATUS_ORDER = `
-  CASE b.status
-    WHEN 'To Pay'    THEN 1
-    WHEN 'Pending'   THEN 2
-    WHEN 'Confirmed' THEN 3
-    WHEN 'Completed' THEN 4
-    ELSE 5
-  END`;
-
 async function findByCustomer(customerId, status) {
   const conditions = ['b.customer_id = ?'];
   const params = [customerId];
@@ -53,12 +44,7 @@ async function findByCustomer(customerId, status) {
        FROM booking b
        JOIN customer c ON c.customer_id = b.customer_id
        ${where}
-       ORDER BY ${STATUS_ORDER},
-                CASE WHEN b.status IN ('To Pay','Pending','Confirmed')
-                     THEN b.event_date END ASC,
-                CASE WHEN b.status IN ('Completed','Rejected')
-                     THEN b.event_date END DESC,
-                b.start_time, b.booking_id`,
+       ORDER BY b.created_at DESC, b.booking_id DESC`,
     params
   );
   return rows;

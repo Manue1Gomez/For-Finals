@@ -16,9 +16,9 @@
   <link rel="stylesheet" href="../css/calendar.css">
   <link rel="stylesheet" href="../css/my-bookings.css">
 </head>
-<body>
+<body class="account-page">
 
-  <header class="site-header">
+  <header class="site-header account-site-header">
     <div class="site-header__inner">
       <a class="site-header__brand" href="home.html">
         <img class="site-header__logo" src="../CustomerImages/brb-logo.png" alt="BRB Studios">
@@ -30,11 +30,13 @@
         <a class="site-header__link" href="home.html#contact">Contact</a>
         <a class="site-header__link site-header__link--accent" href="book-service.html">My Profile</a>
       </nav>
+
     </div>
   </header>
 
   <div class="account">
-    <aside class="account__sidebar">
+    <aside class="account__sidebar" id="accountSidebar">
+      <img class="account__logo" src="../CustomerImages/brb-logo.png" alt="BRB Studios">
       <p class="account__eyebrow">Account</p>
       <p class="account__name" id="accountName"></p>
 
@@ -50,6 +52,15 @@
       </button>
     </aside>
 
+    <button class="account-sidebar-toggle" id="accountSidebarToggle" type="button"
+            aria-controls="accountSidebar" aria-expanded="true" aria-label="Hide customer navigation">
+      <span class="account-sidebar-toggle__icon" aria-hidden="true">
+        <span class="account-sidebar-toggle__line"></span>
+        <span class="account-sidebar-toggle__line"></span>
+        <span class="account-sidebar-toggle__line"></span>
+      </span>
+    </button>
+
     <main class="account__main">
       <h1 class="bookings-page__title">My Bookings</h1>
 
@@ -60,7 +71,7 @@
         <button class="status-tab" role="tab" aria-selected="false" data-status="Pending">Pending</button>
         <button class="status-tab" role="tab" aria-selected="false" data-status="Confirmed">Confirmed</button>
         <button class="status-tab" role="tab" aria-selected="false" data-status="Completed">Completed</button>
-        <button class="status-tab" role="tab" aria-selected="false" data-status="Rejected">Reject</button>
+        <button class="status-tab" role="tab" aria-selected="false" data-status="Rejected">Rejected</button>
       </div>
 
       <p class="bookings-page__status" id="listStatus" role="status">Loading your bookings...</p>

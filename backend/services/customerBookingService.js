@@ -149,12 +149,13 @@ async function validateVoucher(rawCode, rawSubtotal) {
   };
 }
 
-async function getAvailability(query = {}) {
+async function getAvailability(query = {}, customerId) {
   const ids = availabilityService.readServiceIds(query.serviceIds);
   return availabilityService.getAvailability({
     date: asText(query.date),
     serviceIds: ids,
     executor: pool,
+    customerId,
   });
 }
 

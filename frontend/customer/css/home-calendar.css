@@ -35,6 +35,9 @@
 }
 
 .day-panel__list {
+  max-height: 22rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-bottom: 1px solid var(--color-muted);
 }
 

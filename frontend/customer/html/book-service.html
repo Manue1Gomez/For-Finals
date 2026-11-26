@@ -16,9 +16,9 @@
   <link rel="stylesheet" href="../css/calendar.css">
   <link rel="stylesheet" href="../css/booking.css">
 </head>
-<body>
+<body class="account-page">
 
-  <header class="site-header">
+  <header class="site-header account-site-header">
     <div class="site-header__inner">
       <a class="site-header__brand" href="home.html">
         <img class="site-header__logo" src="../CustomerImages/brb-logo.png" alt="BRB Studios">
@@ -30,11 +30,13 @@
         <a class="site-header__link" href="home.html#contact">Contact</a>
         <a class="site-header__link site-header__link--accent" href="profile.html">My Profile</a>
       </nav>
+
     </div>
   </header>
 
   <div class="account">
-    <aside class="account__sidebar">
+    <aside class="account__sidebar" id="accountSidebar">
+      <img class="account__logo" src="../CustomerImages/brb-logo.png" alt="BRB Studios">
       <p class="account__eyebrow">Account</p>
       <p class="account__name" id="accountName"></p>
 
@@ -50,14 +52,29 @@
       </button>
     </aside>
 
+    <button class="account-sidebar-toggle" id="accountSidebarToggle" type="button"
+            aria-controls="accountSidebar" aria-expanded="true" aria-label="Hide customer navigation">
+      <span class="account-sidebar-toggle__icon" aria-hidden="true">
+        <span class="account-sidebar-toggle__line"></span>
+        <span class="account-sidebar-toggle__line"></span>
+        <span class="account-sidebar-toggle__line"></span>
+      </span>
+    </button>
+
     <main class="account__main booking">
       <h1 class="booking__title" id="stepTitle"></h1>
       <p class="booking__subtitle" id="stepSubtitle"></p>
 
       <ol class="stepper" id="stepper" aria-label="Booking progress">
-        <li class="stepper__step" data-step="1"><span class="stepper__dot">1</span></li>
-        <li class="stepper__step" data-step="2"><span class="stepper__dot">2</span></li>
-        <li class="stepper__step" data-step="3"><span class="stepper__dot">3</span></li>
+        <li class="stepper__step" data-step="1">
+          <button class="stepper__dot" type="button" data-go-to="1" aria-label="Go to Choose a service">1</button>
+        </li>
+        <li class="stepper__step" data-step="2">
+          <button class="stepper__dot" type="button" data-go-to="2" aria-label="Go to Pick a date and time">2</button>
+        </li>
+        <li class="stepper__step" data-step="3">
+          <button class="stepper__dot" type="button" data-go-to="3" aria-label="Go to Booking Summary">3</button>
+        </li>
         <li class="stepper__step stepper__step--locked" data-step="4">
           <span class="stepper__dot stepper__dot--lock" role="img" aria-label="Payment step, locked until the studio accepts your request"></span>
         </li>
@@ -97,6 +114,7 @@
               </div>
 
               <div class="calendar__days" id="calendarDays"></div>
+              <p class="calendar__legend">Marked dates have bookings; select a date to see available times.</p>
               <p class="calendar__status" id="calendarStatus" role="status" hidden></p>
             </div>
           </div>
@@ -107,6 +125,9 @@
             <p class="form-alert form-alert--error" id="workshopNotice" role="status" hidden></p>
             <p class="schedule__slot-status" id="slotStatus" role="status">Choose services and a date to see available times.</p>
             <div class="schedule__slots" id="availableSlots" role="group" aria-label="Available time slots"></div>
+            <div class="schedule__booked" id="pendingReservationNotice" role="status" hidden>
+              <p class="schedule__booked-title" id="pendingReservationTitle"></p>
+            </div>
           </div>
         </div>
 

@@ -15,9 +15,9 @@
   <link rel="stylesheet" href="../css/account-layout.css">
   <link rel="stylesheet" href="../css/settings.css">
 </head>
-<body>
+<body class="account-page">
 
-  <header class="site-header">
+  <header class="site-header account-site-header">
     <div class="site-header__inner">
       <a class="site-header__brand" href="home.html">
         <img class="site-header__logo" src="../CustomerImages/brb-logo.png" alt="BRB Studios">
@@ -29,11 +29,13 @@
         <a class="site-header__link" href="home.html#contact">Contact</a>
         <a class="site-header__link site-header__link--accent" href="book-service.html">My Profile</a>
       </nav>
+
     </div>
   </header>
 
   <div class="account">
-    <aside class="account__sidebar">
+    <aside class="account__sidebar" id="accountSidebar">
+      <img class="account__logo" src="../CustomerImages/brb-logo.png" alt="BRB Studios">
       <p class="account__eyebrow">Account</p>
       <p class="account__name" id="accountName"></p>
 
@@ -48,6 +50,15 @@
         Logout
       </button>
     </aside>
+
+    <button class="account-sidebar-toggle" id="accountSidebarToggle" type="button"
+            aria-controls="accountSidebar" aria-expanded="true" aria-label="Hide customer navigation">
+      <span class="account-sidebar-toggle__icon" aria-hidden="true">
+        <span class="account-sidebar-toggle__line"></span>
+        <span class="account-sidebar-toggle__line"></span>
+        <span class="account-sidebar-toggle__line"></span>
+      </span>
+    </button>
 
     <main class="account__main settings">
       <h1 class="settings__display-name" id="displayName"></h1>

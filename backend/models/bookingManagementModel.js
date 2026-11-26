@@ -188,7 +188,9 @@ async function lockScheduleDate(connection, date) {
 async function findBusyIntervals(connection, { date, bookingId = 0, statuses, forUpdate = false }) {
   const [rows] = await connection.query(
     `SELECT TIME_TO_SEC(start_time) DIV 60 AS startMinute,
-            TIME_TO_SEC(end_time) DIV 60 AS endMinute
+           TIME_TO_SEC(end_time) DIV 60 AS endMinute,
+           status,
+           customer_id AS customerId
        FROM booking
       WHERE event_date = ?
         AND booking_id <> ?
@@ -196,7 +198,12 @@ async function findBusyIntervals(connection, { date, bookingId = 0, statuses, fo
       ORDER BY start_time${forUpdate ? ' FOR UPDATE' : ''}`,
     [date, bookingId, statuses]
   );
-  return rows.map((row) => ({ start: row.startMinute, end: row.endMinute }));
+  return rows.map((row) => ({
+    start: row.startMinute,
+    end: row.endMinute,
+    status: row.status,
+    customerId: row.customerId,
+  }));
 }
 
 async function findConflict(connection, { bookingId, date, startTime, endTime, serviceIds, statuses }) {

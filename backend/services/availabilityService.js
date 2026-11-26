@@ -1,5 +1,6 @@
 const AppError = require('./appError');
 const { BOOKING_HOURS, SCHEDULE_CONFLICT_STATUSES } = require('../config/bookingRules');
+const { BOOKING_STATUS } = require('../config/bookingStatus');
 const blockedDateModel = require('../models/blockedDateModel');
 const blockedTimeModel = require('../models/blockedTimeModel');
 const bookingManagementModel = require('../models/bookingManagementModel');
@@ -46,6 +47,7 @@ async function getAvailability({
   serviceIds: rawServiceIds,
   executor,
   excludeBookingId = 0,
+  customerId = null,
   services: existingServices = null,
 }) {
   if (!isValidIsoDate(date)) {
@@ -75,15 +77,26 @@ async function getAvailability({
   });
   const blockedIntervals = await blockedTimeModel.findOnDate(executor, date);
   const busyIntervals = [
-    ...bookingIntervals,
+    ...bookingIntervals
+      .filter(({ status }) => status !== BOOKING_STATUS.PENDING)
+      .map(({ start, end }) => ({ start, end })),
     ...blockedIntervals.map(({ startMinute, endMinute }) => ({ start: startMinute, end: endMinute })),
   ];
+  const pendingReservations = bookingIntervals
+    .filter(({ status, customerId: bookingCustomerId }) =>
+      status === BOOKING_STATUS.PENDING &&
+      (customerId === null || Number(bookingCustomerId) !== Number(customerId))
+    )
+    .map(({ start, end }) => ({
+      startMinute: start,
+      endMinute: end,
+    }));
 
   if (isWorkshop) {
     const opens = timeTextToMinutes(BOOKING_HOURS.open);
     const closes = timeTextToMinutes(BOOKING_HOURS.close);
     const available = !busyIntervals.some((busy) => opens < busy.end && closes > busy.start);
-    return { durationHours: null, wholeDay: true, available, slots: [] };
+    return { durationHours: null, wholeDay: true, available, slots: [], pendingReservations };
   }
 
   return {
@@ -91,6 +104,7 @@ async function getAvailability({
     wholeDay: false,
     available: true,
     slots: makeSlots(date, durationHours, busyIntervals),
+    pendingReservations,
   };
 }
 
@@ -118,7 +132,9 @@ async function resolveSchedule(connection, { date, serviceIds, startTime, bookin
   });
   const blockedIntervals = await blockedTimeModel.findOnDate(connection, date, { forUpdate: true });
   const busyIntervals = [
-    ...bookingIntervals,
+    ...bookingIntervals
+      .filter(({ status }) => status !== BOOKING_STATUS.PENDING)
+      .map(({ start, end }) => ({ start, end })),
     ...blockedIntervals.map(({ startMinute, endMinute }) => ({ start: startMinute, end: endMinute })),
   ];
 

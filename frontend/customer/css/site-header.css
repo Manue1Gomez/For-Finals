@@ -89,6 +89,17 @@
     grid-column: 1 / -1;
     grid-row: 2;
     justify-content: center;
-    gap: 1.75rem;
+    gap: clamp(0.75rem, 3vw, 1.25rem);
+  }
+
+  .home-page .site-header__nav {
+    padding-right: 7rem;
+  }
+
+  .home-page #memberLinks {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-self: center;
+    justify-self: end;
   }
 }

@@ -21,6 +21,8 @@ const scheduleError = document.getElementById('scheduleError');
 const scheduleContinue = document.getElementById('scheduleContinue');
 const availableSlots = document.getElementById('availableSlots');
 const slotStatus = document.getElementById('slotStatus');
+const pendingReservationNotice = document.getElementById('pendingReservationNotice');
+const pendingReservationTitle = document.getElementById('pendingReservationTitle');
 const workshopNotice = document.getElementById('workshopNotice');
 const bookingHoursNote = document.getElementById('bookingHoursNote');
 
@@ -47,6 +49,7 @@ const state = {
   date: null,
   slots: [],
   selectedSlot: null,
+  pendingReservations: [],
   wholeDay: false,
   dayAvailable: false,
   durationHours: 0,
@@ -66,7 +69,14 @@ function goToStep(step) {
     panel.hidden = panel !== current;
   });
   stepperSteps.forEach((item) => {
-    item.classList.toggle('is-reached', Number(item.dataset.step) <= step);
+    const stepNumber = Number(item.dataset.step);
+    const stepButton = item.querySelector('.stepper__dot[data-go-to]');
+    item.classList.toggle('is-reached', stepNumber <= step);
+    if (stepButton) {
+      stepButton.disabled = stepNumber > step;
+      if (stepNumber === step) stepButton.setAttribute('aria-current', 'step');
+      else stepButton.removeAttribute('aria-current');
+    }
   });
 
   stepTitle.textContent = current.dataset.title;
@@ -155,6 +165,7 @@ function updateServiceSelectionControls() {
 
 function renderSlots() {
   availableSlots.replaceChildren();
+  renderPendingReservations();
 
   if (state.wholeDay) {
     slotStatus.textContent = state.dayAvailable
@@ -193,11 +204,36 @@ function renderSlots() {
   scheduleContinue.disabled = !state.selectedSlot;
 }
 
+function renderPendingReservations() {
+  if (!state.selectedSlot) {
+    pendingReservationNotice.hidden = true;
+    return;
+  }
+
+  const [selectedHours, selectedMinutes] = state.selectedSlot.startTime.split(':').map(Number);
+  const selectedStart = selectedHours * 60 + selectedMinutes;
+  const selectedEnd = selectedStart + state.durationHours * 60;
+  const reservations = state.pendingReservations.filter(({ startMinute, endMinute }) =>
+    selectedStart < endMinute && selectedEnd > startMinute
+  );
+  if (reservations.length === 0) {
+    pendingReservationNotice.hidden = true;
+    return;
+  }
+
+  pendingReservationTitle.textContent = reservations.length === 1
+    ? 'Another customer has also booked this time; their request is only waiting for admin approval.'
+    : 'Other customers have also booked this time; their requests are only waiting for admin approval.';
+  pendingReservationNotice.hidden = false;
+}
+
 async function loadAvailability(iso = state.date) {
   const request = ++availabilityRequest;
   state.date = iso;
   state.slots = [];
   state.selectedSlot = null;
+  state.pendingReservations = [];
+  renderPendingReservations();
   state.wholeDay = false;
   state.dayAvailable = false;
   state.durationHours = 0;
@@ -216,11 +252,12 @@ async function loadAvailability(iso = state.date) {
       date: iso,
       serviceIds: [...state.selectedIds].join(','),
     });
-    const { ok, data } = await getJson(`/api/calendar/availability?${params}`);
+    const { ok, data } = await getJson(`/api/bookings/availability?${params}`);
     if (request !== availabilityRequest) return;
     if (!ok) throw new Error(data.message ?? 'Could not load available slots.');
 
     state.slots = data.slots ?? [];
+    state.pendingReservations = data.pendingReservations ?? [];
     state.wholeDay = Boolean(data.wholeDay);
     state.dayAvailable = Boolean(data.available);
     state.durationHours = data.durationHours ?? 0;
