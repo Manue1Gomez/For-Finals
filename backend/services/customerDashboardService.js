@@ -10,7 +10,11 @@ const paymentModel = require('../models/paymentModel');
 const customerModel = require('../models/customerModel');
 const { splitServices } = require('../models/bookingSql');
 const { toCents, fromCents } = require('./money');
-const { requiredDownpaymentCents } = require('./paymentRules');
+const {
+  requiredDownpaymentCents,
+  CUSTOMER_BOOKING_STATUS,
+  customerFacingBookingStatus,
+} = require('./paymentRules');
 const { formatTimeRange, isValidIsoDate, todayIso } = require('./timeHelper');
 const netcorepayService = require('./netcorepayService');
 const fs = require('fs/promises');
@@ -97,14 +101,26 @@ function toBookingEntry(row) {
 
 // ─── List my bookings ─────────────────────────────────────────────────────────
 
-const VALID_STATUSES = new Set(['Pending', 'To Pay', 'Confirmed', 'Completed', 'Rejected']);
+const VALID_STATUSES = new Set([
+  'Pending',
+  'To Pay',
+  CUSTOMER_BOOKING_STATUS.FOR_VERIFICATION,
+  'Confirmed',
+  'Completed',
+  'Rejected',
+]);
 
 async function listBookings(customerId, rawStatus) {
   const status = rawStatus ? String(rawStatus).trim() : null;
   if (status && !VALID_STATUSES.has(status)) throw new AppError('Invalid status filter.', 400);
 
-  const rows = await customerDashboardModel.findByCustomer(customerId, status);
-  return rows.map(toBookingEntry);
+  const rows = await customerDashboardModel.findByCustomer(customerId);
+  return rows
+    .map((row) => toBookingEntry({
+      ...row,
+      status: customerFacingBookingStatus(row.status, Number(row.hasPendingPayment) === 1),
+    }))
+    .filter((booking) => !status || booking.status === status);
 }
 
 // ─── Booking details ──────────────────────────────────────────────────────────
@@ -123,6 +139,8 @@ async function getBookingDetails(customerId, rawId) {
   const totalCents = toCents(booking.totalAmount);
   const paidCents = toCents(booking.amountPaid);
   const downpaymentCents = requiredDownpaymentCents(totalCents);
+  const hasPendingPayment = payments.some((payment) => payment.status === 'Pending');
+  const status = customerFacingBookingStatus(booking.status, hasPendingPayment);
 
   return {
     id: booking.id,
@@ -130,7 +148,9 @@ async function getBookingDetails(customerId, rawId) {
     eventDate: booking.eventDate,
     startTime: booking.startTime,
     endTime: booking.endTime,
-    status: booking.status,
+    status,
+    pendingPaymentReview: status === CUSTOMER_BOOKING_STATUS.FOR_VERIFICATION &&
+      booking.status === BOOKING_STATUS.TO_PAY,
     subtotal: fromCents(toCents(booking.subtotal)),
     discountAmount: fromCents(toCents(booking.discountAmount || 0)),
     totalAmount: fromCents(totalCents),
@@ -145,7 +165,7 @@ async function getBookingDetails(customerId, rawId) {
       price: fromCents(toCents(s.price)),
       durationHours: s.durationHours === null ? null : Number(s.durationHours),
     })),
-    canReschedule: RESCHEDULABLE_STATUSES.includes(booking.status) &&
+    canReschedule: RESCHEDULABLE_STATUSES.includes(status) &&
       !services.some((service) => /modeling workshop/i.test(service.name)),
     payments: payments.map((p) => ({
       id: p.id,

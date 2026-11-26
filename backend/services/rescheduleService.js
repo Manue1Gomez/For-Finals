@@ -7,6 +7,7 @@ const rescheduleModel = require('../models/rescheduleModel');
 const { splitServices } = require('../models/bookingSql');
 const { formatTimeRange } = require('./timeHelper');
 const availabilityService = require('./availabilityService');
+const customerNotificationEmailService = require('./customerNotificationEmailService');
 const workshopEmailService = require('./workshopEmailService');
 
 const NOT_FOUND_MESSAGE = 'Request not found or already reviewed.';
@@ -42,6 +43,7 @@ async function listRequests() {
 async function approveRequest(rawId) {
   const id = parseRequestId(rawId);
   let workshopReschedule = null;
+  let rescheduleNotification = null;
 
   await withTransaction(async (connection) => {
     const request = await rescheduleModel.lockPendingById(connection, id);
@@ -72,11 +74,21 @@ async function approveRequest(rawId) {
 
     if (services.some((service) => /modeling workshop/i.test(service.name))) {
       workshopReschedule = { bookingId: booking.id, oldEventDate: booking.eventDate };
+    } else {
+      rescheduleNotification = {
+        bookingId: booking.id,
+        status: RESCHEDULE_STATUS.APPROVED,
+        requestedDate: request.newDate,
+        requestedStartTime: request.newStartTime,
+        requestedEndTime: request.newEndTime,
+      };
     }
   });
 
   if (workshopReschedule) {
     await workshopEmailService.sendWorkshopRescheduleEmail(workshopReschedule);
+  } else if (rescheduleNotification) {
+    await customerNotificationEmailService.sendRescheduleDecisionEmail(rescheduleNotification);
   }
 
   return { id, status: RESCHEDULE_STATUS.APPROVED };
@@ -84,13 +96,25 @@ async function approveRequest(rawId) {
 
 async function rejectRequest(rawId) {
   const id = parseRequestId(rawId);
+  let rescheduleNotification = null;
 
   await withTransaction(async (connection) => {
     const request = await rescheduleModel.lockPendingById(connection, id);
     if (!request) throw new AppError(NOT_FOUND_MESSAGE, 404);
 
     await rescheduleModel.markReviewed(connection, id, RESCHEDULE_STATUS.REJECTED);
+    rescheduleNotification = {
+      bookingId: request.bookingId,
+      status: RESCHEDULE_STATUS.REJECTED,
+      requestedDate: request.newDate,
+      requestedStartTime: request.newStartTime,
+      requestedEndTime: request.newEndTime,
+    };
   });
+
+  if (rescheduleNotification) {
+    await customerNotificationEmailService.sendRescheduleDecisionEmail(rescheduleNotification);
+  }
 
   return { id, status: RESCHEDULE_STATUS.REJECTED };
 }

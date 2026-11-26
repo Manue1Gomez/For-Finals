@@ -13,8 +13,9 @@ const { toCents, fromCents } = require('./money');
 const { describePayment } = require('./paymentRules');
 const { formatMinutes, formatTimeRange, isValidIsoDate, timeTextToMinutes, todayIso } = require('./timeHelper');
 const availabilityService = require('./availabilityService');
-const { getScheduleDetails } = require('./serviceScheduleRules');
+const { getScheduleDetails, canAdminEditSchedule } = require('./serviceScheduleRules');
 const voucherRedemptionService = require('./voucherRedemptionService');
+const customerNotificationEmailService = require('./customerNotificationEmailService');
 const workshopEmailService = require('./workshopEmailService');
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -136,6 +137,7 @@ async function getBookingDetails(rawId) {
     bookingManagementModel.findServices(id),
     paymentModel.findByBooking(id),
   ]);
+  const { isWorkshop } = getScheduleDetails(services);
 
   const totalCents = toCents(details.totalAmount);
   const paidCents = toCents(details.amountPaid);
@@ -162,7 +164,7 @@ async function getBookingDetails(rawId) {
       price: Number(service.price),
       durationHours: service.durationHours === null ? null : Number(service.durationHours),
     })),
-    wholeDay: services.some((service) => /modeling workshop/i.test(service.name)),
+    wholeDay: isWorkshop,
     voucherCode: details.voucherCode,
     subtotal: Number(details.subtotal),
     discountAmount: Number(details.discountAmount),
@@ -171,7 +173,7 @@ async function getBookingDetails(rawId) {
     balance: fromCents(totalCents - paidCents),
     paymentLabel: describePayment(totalCents, paidCents),
     createdAt: details.createdAt,
-    canReschedule: ONGOING_STATUSES.includes(details.status),
+    canReschedule: canAdminEditSchedule(details.status, services),
     allowedStatuses: allowedStatusesFor(details, todayIso()),
     payments: payments.map(toPaymentEntry),
   };
@@ -222,6 +224,7 @@ async function updateBooking(rawId, body = {}) {
   const id = parseId(rawId);
   const today = todayIso();
   let workshopReschedule = null;
+  let bookingDecision = null;
 
   await withTransaction(async (connection) => {
     const booking = await bookingManagementModel.lockById(connection, id);
@@ -245,8 +248,11 @@ async function updateBooking(rawId, body = {}) {
     }
 
     if (scheduleChanged) {
-      if (!ONGOING_STATUSES.includes(booking.status)) {
-        throw new AppError("Completed or rejected bookings can't be rescheduled.", 409);
+      if (!canAdminEditSchedule(booking.status, services)) {
+        const message = ONGOING_STATUSES.includes(booking.status)
+          ? 'Only Modeling Workshop schedules can be edited from the admin Bookings page.'
+          : "Completed or rejected bookings can't be rescheduled.";
+        throw new AppError(message, 409, { eventDate: message });
       }
       if (input.eventDate < today) {
         const message = 'Choose today or a later date.';
@@ -281,10 +287,22 @@ async function updateBooking(rawId, body = {}) {
 
     await bookingManagementModel.update(connection, id, input);
 
+    if (
+      statusChanged &&
+      booking.status === BOOKING_STATUS.PENDING &&
+      [BOOKING_STATUS.TO_PAY, BOOKING_STATUS.REJECTED].includes(input.status)
+    ) {
+      bookingDecision = { bookingId: id, status: input.status };
+    }
+
     if (scheduleChanged && isWorkshop) {
       workshopReschedule = { bookingId: id, oldEventDate: booking.eventDate };
     }
   });
+
+  if (bookingDecision) {
+    await customerNotificationEmailService.sendBookingDecisionEmail(bookingDecision);
+  }
 
   if (workshopReschedule) {
     await workshopEmailService.sendWorkshopRescheduleEmail(workshopReschedule);

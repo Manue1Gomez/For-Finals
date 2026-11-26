@@ -9,6 +9,9 @@ const API_BASE = '/api/customer';
 
 let activeStatus = '';
 let openDetail = null; // current booking detail object
+let proofPreviewUrl = null;
+let detailViewMode = 'details';
+let isPaymentFlow = false;
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -24,12 +27,36 @@ const cardTemplate = document.getElementById('bookingCardTemplate');
 const statusClass = (status) => ({
   'Pending': 'pending',
   'To Pay': 'topay',
+  'For Verification': 'verification',
   'Confirmed': 'confirmed',
   'Completed': 'completed',
   'Rejected': 'rejected',
 }[status] ?? 'pending');
 
-const INCOMING_STATUSES = new Set(['Pending', 'To Pay', 'Confirmed']);
+const INCOMING_STATUSES = new Set(['Pending', 'To Pay', 'For Verification', 'Confirmed']);
+
+function clearProofPreview() {
+  if (proofPreviewUrl) URL.revokeObjectURL(proofPreviewUrl);
+  proofPreviewUrl = null;
+
+  const preview = document.getElementById('proofPreview');
+  const image = document.getElementById('proofPreviewImage');
+  if (preview) preview.hidden = true;
+  if (image) image.removeAttribute('src');
+}
+
+function showProofPreview(file) {
+  clearProofPreview();
+  if (!file) return;
+
+  const preview = document.getElementById('proofPreview');
+  const image = document.getElementById('proofPreviewImage');
+  if (!preview || !image) return;
+
+  proofPreviewUrl = URL.createObjectURL(file);
+  image.src = proofPreviewUrl;
+  preview.hidden = false;
+}
 
 function localDateIso() {
   const date = new Date();
@@ -146,10 +173,15 @@ function buildCard(booking) {
   }
 
   const actions = item.querySelector('.booking-card__actions');
-  const canView = ['To Pay', 'Confirmed'].includes(booking.status);
   const isOver  = ['Completed', 'Rejected'].includes(booking.status);
 
-  if (canView) {
+  if (booking.status === 'To Pay') {
+    const payBtn = document.createElement('button');
+    payBtn.className = 'booking-card__btn booking-card__btn--solid';
+    payBtn.textContent = 'Pay';
+    payBtn.addEventListener('click', () => openDetailModal(booking.id, 'payment'));
+    actions.appendChild(payBtn);
+  } else if (booking.status === 'Confirmed') {
     const viewBtn = document.createElement('button');
     viewBtn.className = 'booking-card__btn booking-card__btn--solid';
     viewBtn.textContent = 'View Details';
@@ -176,11 +208,13 @@ function buildCard(booking) {
     actions.appendChild(contractBtn);
   }
 
-  // Pending: no action button — customer just waits for admin approval
-  if (booking.status === 'Pending') {
+  // Pending and payment verification: the customer waits for studio review.
+  if (['Pending', 'For Verification'].includes(booking.status)) {
     const waiting = document.createElement('p');
     waiting.className = 'booking-card__waiting';
-    waiting.textContent = 'Waiting for studio approval…';
+    waiting.textContent = booking.status === 'For Verification'
+      ? 'Downpayment submitted — awaiting verification…'
+      : 'Waiting for studio approval…';
     actions.appendChild(waiting);
   }
 
@@ -207,7 +241,9 @@ function bookAgain(booking) {
 
 // ─── Detail modal ─────────────────────────────────────────────────────────────
 
-async function openDetailModal(bookingId) {
+async function openDetailModal(bookingId, initialView = 'details') {
+  detailViewMode = initialView;
+  isPaymentFlow = initialView === 'payment';
   detailBody.innerHTML = '<p style="padding:1rem;text-align:center;color:var(--color-muted)">Loading...</p>';
   detailOverlay.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -228,30 +264,45 @@ async function openDetailModal(bookingId) {
 }
 
 function closeDetailModal() {
+  clearProofPreview();
   detailOverlay.hidden = true;
   document.body.style.overflow = '';
   openDetail = null;
+  detailViewMode = 'details';
+  isPaymentFlow = false;
 }
 
 function renderDetail(booking) {
+  clearProofPreview();
+  const isPayFlow = isPaymentFlow && booking.status === 'To Pay';
+  const detailViewClass = isPayFlow
+    ? (detailViewMode === 'payment' ? 'detail--payment-only' : 'detail--details-only')
+    : '';
   const canPay = ['To Pay', 'Confirmed'].includes(booking.status) && booking.balance > 0;
   const canVoucher = booking.status === 'To Pay' && !booking.voucherCode;
   const canReschedule = booking.canReschedule;
   const hasPendingReschedule = booking.rescheduleRequest?.status === 'Pending';
+  const paymentDue = booking.status === 'To Pay'
+    ? Math.max(booking.requiredDownpayment - booking.amountPaid, 0)
+    : booking.balance;
+  const paymentDueLabel = booking.status === 'To Pay' ? 'Downpayment due' : 'Remaining balance';
   const paidPercent = booking.totalAmount > 0
     ? Math.round((booking.amountPaid / booking.totalAmount) * 100)
     : 0;
 
-  const statusLabel = {
-    'Pending': 'Waiting for Studio Approval',
-    'To Pay': 'Approved — Awaiting Downpayment',
-    'Confirmed': 'Confirmed',
-    'Completed': 'Completed',
-    'Rejected': 'Rejected',
-  }[booking.status] ?? booking.status;
+  const statusLabel = booking.pendingPaymentReview
+    ? 'Downpayment Awaiting Verification'
+    : ({
+      'Pending': 'Waiting for Studio Approval',
+      'To Pay': 'Approved — Awaiting Downpayment',
+      'For Verification': 'Downpayment Awaiting Verification',
+      'Confirmed': 'Confirmed',
+      'Completed': 'Completed',
+      'Rejected': 'Rejected',
+    }[booking.status] ?? booking.status);
 
   detailBody.innerHTML = `
-    <div class="detail" id="detailGrid">
+    <div class="detail ${detailViewClass}" id="detailGrid">
       <div class="detail__ref">BOOKING SUMMARY : BRB - ${booking.reference}</div>
 
       <div class="detail__status-banner detail__status-banner--${statusClass(booking.status)}">
@@ -305,6 +356,10 @@ function renderDetail(booking) {
 
       ${canPay ? `
       <div class="detail__payment-panel">
+        <p class="detail__payment-due">
+          <span>${paymentDueLabel}</span>
+          <strong>${formatPeso(paymentDue)}</strong>
+        </p>
         <p class="form-alert detail__alert" id="paymentAlert" role="alert" hidden></p>
 
         <div class="detail__gcash-section">
@@ -323,6 +378,10 @@ function renderDetail(booking) {
             <span class="detail__proof-icon" aria-hidden="true"></span>
             <span class="detail__proof-text" id="proofText">Upload screenshot of your payment</span>
           </label>
+          <div class="detail__proof-preview" id="proofPreview" hidden>
+            <img id="proofPreviewImage" alt="Preview of selected payment proof">
+            <button class="detail__proof-cancel" id="proofCancel" type="button" hidden>Cancel</button>
+          </div>
         </div>
 
         <button class="detail__submit-btn" id="submitPayment" type="button">Submit Manual Proof</button>
@@ -336,6 +395,7 @@ function renderDetail(booking) {
 
       <div class="detail__modal-actions">
         ${canReschedule ? `<button class="booking-card__btn booking-card__btn--outline" id="rescheduleToggleBtn" type="button">${hasPendingReschedule ? 'Change Reschedule Request' : 'Reschedule Booking'}</button>` : ''}
+        ${isPayFlow ? `<button class="booking-card__btn booking-card__btn--outline" id="detailViewToggle" type="button">${detailViewMode === 'payment' ? 'View Details' : 'Back to Payment'}</button>` : ''}
         <button class="booking-card__btn booking-card__btn--outline" style="min-width:7rem;" id="closeDetailBtn" type="button">Close</button>
       </div>
     </div>
@@ -358,12 +418,34 @@ function renderDetail(booking) {
       if (file) {
         proofText.textContent = file.name;
         document.getElementById('proofDrop').classList.add('has-file');
+      } else {
+        proofText.textContent = 'Upload screenshot of your payment';
+        document.getElementById('proofDrop').classList.remove('has-file');
       }
+      document.getElementById('proofCancel').hidden = !file;
+      showProofPreview(file);
     });
   }
 
+  document.getElementById('proofCancel')?.addEventListener('click', () => {
+    proofFile.value = '';
+    proofText.textContent = 'Upload screenshot of your payment';
+    document.getElementById('proofDrop').classList.remove('has-file');
+    document.getElementById('proofCancel').hidden = true;
+    showProofPreview(null);
+  });
+
   // Bind payment submit
   document.getElementById('submitPayment')?.addEventListener('click', () => submitPayment(booking.id));
+
+  document.getElementById('detailViewToggle')?.addEventListener('click', () => {
+    const detail = document.getElementById('detailGrid');
+    const toggle = document.getElementById('detailViewToggle');
+    detailViewMode = detailViewMode === 'payment' ? 'details' : 'payment';
+    detail.classList.toggle('detail--payment-only', detailViewMode === 'payment');
+    detail.classList.toggle('detail--details-only', detailViewMode === 'details');
+    toggle.textContent = detailViewMode === 'payment' ? 'View Details' : 'Back to Payment';
+  });
 
   // Reschedule toggle — calendar is hidden until the button is clicked
   if (canReschedule) {
@@ -654,8 +736,21 @@ async function submitPayment(bookingId) {
       alertEl.className = 'form-alert form-alert--success detail__alert';
       alertEl.hidden = false;
       btn.textContent = 'Submitted';
+      fileInput.disabled = true;
+      document.getElementById('proofCancel').hidden = true;
+      document.getElementById('payGCash')?.setAttribute('disabled', '');
+      detailBody.querySelector('.detail__payment-panel')?.classList.add('detail__payment-panel--submitted');
 
-      // Reload bookings list in background
+      if (openDetail?.id === bookingId) {
+        openDetail = { ...openDetail, status: 'For Verification', pendingPaymentReview: true };
+        const statusBanner = detailBody.querySelector('.detail__status-banner');
+        if (statusBanner) {
+          statusBanner.className = `detail__status-banner detail__status-banner--${statusClass('For Verification')}`;
+          statusBanner.textContent = 'Your Order is Downpayment Awaiting Verification';
+        }
+      }
+
+      selectStatus('For Verification');
       loadBookings(activeStatus);
     } else {
       alertEl.textContent = data.errors?.proof ?? data.message ?? 'Could not submit payment.';
@@ -722,15 +817,18 @@ async function submitReschedule(bookingId) {
 
 // ─── Status tabs ──────────────────────────────────────────────────────────────
 
+function selectStatus(status) {
+  document.querySelectorAll('.status-tab').forEach((tab) => {
+    const isActive = tab.dataset.status === status;
+    tab.classList.toggle('status-tab--active', isActive);
+    tab.setAttribute('aria-selected', String(isActive));
+  });
+  activeStatus = status;
+}
+
 document.querySelectorAll('.status-tab').forEach((tab) => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.status-tab').forEach((t) => {
-      t.classList.remove('status-tab--active');
-      t.setAttribute('aria-selected', 'false');
-    });
-    tab.classList.add('status-tab--active');
-    tab.setAttribute('aria-selected', 'true');
-    activeStatus = tab.dataset.status;
+    selectStatus(tab.dataset.status);
     loadBookings(activeStatus);
   });
 });

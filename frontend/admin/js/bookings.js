@@ -348,7 +348,7 @@ function renderBookingDetails(details) {
 
   elements.viewPayments.replaceChildren(...details.payments.map(createPaymentItem));
   elements.viewNoPayments.hidden = details.payments.length > 0;
-  elements.editSchedule.hidden = !details.canReschedule;
+  elements.editSchedule.hidden = !details.canReschedule || !details.wholeDay;
 }
 
 async function openView(id) {
@@ -418,7 +418,7 @@ async function loadScheduleAvailability(date) {
 }
 
 function openScheduleEditor() {
-  if (!viewing?.canReschedule) return;
+  if (!viewing?.canReschedule || !viewing.wholeDay) return;
   editingSchedule = viewing;
   elements.scheduleForm.reset();
   elements.scheduleDate.min = todayIso();
