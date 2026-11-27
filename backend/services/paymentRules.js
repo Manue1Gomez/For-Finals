@@ -1,5 +1,9 @@
 const { BOOKING_STATUS } = require('../config/bookingStatus');
 
+const CUSTOMER_BOOKING_STATUS = Object.freeze({
+  FOR_VERIFICATION: 'For Verification',
+});
+
 function requiredDownpaymentCents(totalCents) {
   return Math.ceil(totalCents / 2);
 }
@@ -19,4 +23,16 @@ function statusAfterPayment(currentStatus, paidCents, totalCents) {
     : currentStatus;
 }
 
-module.exports = { requiredDownpaymentCents, describePayment, statusAfterPayment };
+function customerFacingBookingStatus(bookingStatus, hasPendingPayment) {
+  return bookingStatus === BOOKING_STATUS.TO_PAY && hasPendingPayment
+    ? CUSTOMER_BOOKING_STATUS.FOR_VERIFICATION
+    : bookingStatus;
+}
+
+module.exports = {
+  requiredDownpaymentCents,
+  describePayment,
+  statusAfterPayment,
+  CUSTOMER_BOOKING_STATUS,
+  customerFacingBookingStatus,
+};

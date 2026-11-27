@@ -1,4 +1,5 @@
 const AppError = require('./appError');
+const { ONGOING_STATUSES } = require('../config/bookingRules');
 
 function isModelingWorkshop(service) {
   return /modeling workshop/i.test(service.name);
@@ -21,4 +22,8 @@ function getScheduleDetails(services) {
   };
 }
 
-module.exports = { isModelingWorkshop, getScheduleDetails };
+function canAdminEditSchedule(bookingStatus, services) {
+  return ONGOING_STATUSES.includes(bookingStatus) && getScheduleDetails(services).isWorkshop;
+}
+
+module.exports = { isModelingWorkshop, getScheduleDetails, canAdminEditSchedule };

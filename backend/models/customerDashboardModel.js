@@ -16,17 +16,7 @@ const FIRST_IMAGE_SUBQUERY = `(
    LIMIT 1
 )`;
 
-async function findByCustomer(customerId, status) {
-  const conditions = ['b.customer_id = ?'];
-  const params = [customerId];
-
-  if (status) {
-    conditions.push('b.status = ?');
-    params.push(status);
-  }
-
-  const where = `WHERE ${conditions.join(' AND ')}`;
-
+async function findByCustomer(customerId) {
   const [rows] = await pool.query(
     `SELECT b.booking_id AS id,
             ${REFERENCE} AS reference,
@@ -40,12 +30,18 @@ async function findByCustomer(customerId, status) {
             b.discount_amount AS discountAmount,
             b.total_amount AS totalAmount,
             b.amount_paid AS amountPaid,
-            b.voucher_code AS voucherCode
+            b.voucher_code AS voucherCode,
+            EXISTS (
+              SELECT 1
+                FROM payment p_status
+               WHERE p_status.booking_id = b.booking_id
+                 AND p_status.status = 'Pending'
+            ) AS hasPendingPayment
        FROM booking b
        JOIN customer c ON c.customer_id = b.customer_id
-       ${where}
+      WHERE b.customer_id = ?
        ORDER BY b.created_at DESC, b.booking_id DESC`,
-    params
+    [customerId]
   );
   return rows;
 }

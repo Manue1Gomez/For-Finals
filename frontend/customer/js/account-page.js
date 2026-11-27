@@ -1,5 +1,5 @@
-import { postJson } from './api.js';
-import { loadCustomer } from './session.js';
+import { loadCustomer, logoutCustomer } from './session.js';
+import { confirmLogout } from '../../shared/js/logout-confirmation.js';
 
 const LOGIN_PAGE = 'login.html';
 
@@ -66,19 +66,13 @@ export async function startAccountPage() {
 }
 
 async function logout({ currentTarget }) {
+  if (!await confirmLogout()) return;
+
   currentTarget.disabled = true;
 
   try {
-    const { ok, data } = await postJson('/api/auth/logout', {});
-
-    if (ok) {
-      window.location.assign(data.redirectTo);
-      return;
-    }
+    window.location.assign(await logoutCustomer());
   } catch {
     currentTarget.disabled = false;
-    return;
   }
-
-  currentTarget.disabled = false;
 }

@@ -1,4 +1,4 @@
-import { getJson } from './api.js';
+import { getJson, postJson } from './api.js';
 
 const BOOKING_PAGE = 'book-service.html';
 const LOGIN_PAGE = 'login.html';
@@ -18,4 +18,14 @@ export function bookingUrl(customer, query = {}) {
 
   const search = new URLSearchParams(query).toString();
   return search ? `${BOOKING_PAGE}?${search}` : BOOKING_PAGE;
+}
+
+export async function logoutCustomer() {
+  const { ok, data } = await postJson('/api/auth/logout', {});
+
+  if (!ok || typeof data?.redirectTo !== 'string') {
+    throw new Error(data?.message || 'Unable to log out. Please try again.');
+  }
+
+  return data.redirectTo;
 }

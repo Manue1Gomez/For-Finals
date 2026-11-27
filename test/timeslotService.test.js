@@ -1,7 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { generateSlots } = require('../backend/services/timeslotService');
-const { getScheduleDetails } = require('../backend/services/serviceScheduleRules');
+const { BOOKING_STATUS } = require('../backend/config/bookingStatus');
+const {
+  getScheduleDetails,
+  canAdminEditSchedule,
+} = require('../backend/services/serviceScheduleRules');
 
 test('generates whole-hour duration slots through closing time', () => {
   const slots = generateSlots({ open: '03:00', close: '22:00', durationHours: 2 });
@@ -83,4 +87,13 @@ test('keeps Modeling Workshop exclusive in either service order', () => {
   assert.deepEqual(getScheduleDetails([workshop]), { durationHours: null, isWorkshop: true });
   assert.throws(() => getScheduleDetails([workshop, other]), /cannot be combined/);
   assert.throws(() => getScheduleDetails([other, workshop]), /cannot be combined/);
+});
+
+test('only ongoing Modeling Workshop bookings can have their schedule edited by admin', () => {
+  const workshop = { name: 'Modeling Workshop', durationHours: null };
+  const other = { name: 'Hair and Makeup', durationHours: 2 };
+
+  assert.equal(canAdminEditSchedule(BOOKING_STATUS.TO_PAY, [workshop]), true);
+  assert.equal(canAdminEditSchedule(BOOKING_STATUS.TO_PAY, [other]), false);
+  assert.equal(canAdminEditSchedule(BOOKING_STATUS.COMPLETED, [workshop]), false);
 });
