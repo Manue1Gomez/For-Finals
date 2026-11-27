@@ -1,4 +1,5 @@
 .env
 !.env.example
-uploads/services/*
-!uploads/services/.gitkeep
+frontend/dist/
+backend/uploads/services/*
+!backend/uploads/services/.gitkeep

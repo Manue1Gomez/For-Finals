@@ -27,7 +27,7 @@ const voucherRedemptionService = require('./voucherRedemptionService');
 
 // ─── Payment proof storage ────────────────────────────────────────────────────
 
-const UPLOADS_ROOT = path.join(__dirname, '..', '..', 'uploads');
+const UPLOADS_ROOT = path.join(__dirname, '..', 'uploads');
 const PROOF_DIR = path.join(UPLOADS_ROOT, 'payment-proofs');
 const PROOF_URL_BASE = '/uploads/payment-proofs';
 
