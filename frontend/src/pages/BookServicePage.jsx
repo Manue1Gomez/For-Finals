@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AccountLayout from '../components/AccountLayout.jsx';
 import { getJson, postJson } from '../lib/api.js';
-import { getBusinessDate, getBusinessDateOffset, getBusinessMonthStart } from '../lib/businessDate.js';
+import { getBusinessDate, getBusinessDateOffset } from '../lib/businessDate.js';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tues', 'Wed', 'Thurs', 'Fri', 'Sat'];
 
@@ -80,7 +80,9 @@ export default function BookServicePage() {
       const [year, month] = requestedDate.split('-').map(Number);
       return new Date(year, month - 1, 1);
     }
-    return getBusinessMonthStart();
+    const earliestBookingDate = getBusinessDateOffset(2);
+    const [year, month] = earliestBookingDate.split('-').map(Number);
+    return new Date(year, month - 1, 1);
   });
   const [blockedDates, setBlockedDates] = useState([]);
   const [bookedDates, setBookedDates] = useState([]);

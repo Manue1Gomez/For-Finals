@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import PageStyles from '../components/PageStyles.jsx';
 import { getJson, postJson } from '../lib/api.js';
 import { HOME_PAGE_STYLES } from '../lib/pageStyles.js';
-import { getBusinessDate, getBusinessMonthStart } from '../lib/businessDate.js';
+import { getBusinessDate, getBusinessDateOffset } from '../lib/businessDate.js';
 
 const STUDIO_MAP_URL = 'https://l.facebook.com/l.php?u=https%3A%2F%2Fwww.bing.com%2Fmaps%2Fdefault.aspx%3Fv%3D2%26pc%3DFACEBK%26mid%3D8100%26where1%3D13.932117479722%252C%2520120.81314808899%26FORM%3DFBKPL1%26name%3DMarasigan%2520St.%2520Poblacion%25204%252C%2520Calaca%2520City%252C%2520Calaca%252C%2520Philippines%252C%25204212%26mkt%3Den-GB%26fbclid%3DIwZXh0bgNhZW0CMTAAcGRvZgVicmlkETFWekJxRFV4WEpYODJPaXRnc3J0YwZhcHBfaWQQMjIyMDM5MTc4ODIwMDg5MgABH0WStDvUVIv76aw0_9FUWlrV32tO_Jtvw5JwjSmXP9k9JucgbbRkdWnHKP7U_aem_wS08rMv-8UNYNwPW9y1TKw&h=AUD2XMspgMC1iEqx1S5lERRr4114H8tg-UQazJSYYBR_-U44t6VqTZ_PrdzNJaVksXfUQeYI5bO-py7ve4KPCNMbzRN5muBXxZaGAzfn0bexOPa_ZuSTif751kWEiIwDXoFd';
 
@@ -52,7 +52,11 @@ export default function HomePage() {
   const [dayStatus, setDayStatus] = useState('Choose a date on the calendar to see its bookings.');
   const [dayBookings, setDayBookings] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
-  const [calendarMonth, setCalendarMonth] = useState(() => getBusinessMonthStart());
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const earliestBookingDate = getBusinessDateOffset(2);
+    const [year, month] = earliestBookingDate.split('-').map(Number);
+    return new Date(year, month - 1, 1);
+  });
   const [blockedDates, setBlockedDates] = useState([]);
   const [bookedDates, setBookedDates] = useState([]);
   const [calendarStatus, setCalendarStatus] = useState('');
@@ -153,11 +157,11 @@ export default function HomePage() {
         setBlockedDates(response.data.blockedDates);
         setBookedDates(response.data.bookedDates);
 
-        const today = getBusinessDate();
-        const currentMonthKey = today.slice(0, 7);
-        if (!initialDateSelectedRef.current && monthKey === today.slice(0, 7) && !response.data.blockedDates.includes(today)) {
+        const earliestBookingDate = getBusinessDateOffset(2);
+        const currentMonthKey = earliestBookingDate.slice(0, 7);
+        if (!initialDateSelectedRef.current && monthKey === earliestBookingDate.slice(0, 7) && !response.data.blockedDates.includes(earliestBookingDate)) {
           initialDateSelectedRef.current = true;
-          void loadDay(today);
+          void loadDay(earliestBookingDate);
         }
       } catch {
         if (!cancelled && request === monthRequestRef.current) {
@@ -233,7 +237,8 @@ export default function HomePage() {
   );
   const calendarSpacers = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay();
   const todayIso = getBusinessDate();
-  const currentMonthKey = todayIso.slice(0, 7);
+  const earliestBookingDate = getBusinessDateOffset(2);
+  const currentMonthKey = earliestBookingDate.slice(0, 7);
 
   return (
     <>
@@ -356,7 +361,7 @@ export default function HomePage() {
                   {Array.from({ length: calendarSpacers }, (_, index) => <span key={`spacer-${index}`} />)}
                   {calendarDays.map((day) => {
                     const isoDate = `${monthKey}-${String(day).padStart(2, '0')}`;
-                    const isPast = isoDate < todayIso;
+                    const isPast = isoDate < earliestBookingDate;
                     const isBlocked = blockedDates.includes(isoDate);
                     const isBooked = bookedDates.includes(isoDate);
                     const isSelected = selectedDate === isoDate;
