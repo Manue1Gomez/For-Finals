@@ -38,6 +38,22 @@ function parsePositiveInteger(value, fallback) {
   return Number.isInteger(number) && number > 0 ? number : fallback;
 }
 
+function readPendingConflictIds(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new AppError('The confirmed conflict list is invalid.', 400);
+  }
+
+  const ids = value.map(Number);
+  if (
+    ids.some((id) => !Number.isInteger(id) || id < 1)
+    || new Set(ids).size !== ids.length
+  ) {
+    throw new AppError('The confirmed conflict list is invalid.', 400);
+  }
+  return ids.sort((left, right) => left - right);
+}
+
 function readListQuery(query) {
   const status = asText(query.status);
   const date = asText(query.date);
@@ -224,7 +240,7 @@ async function updateBooking(rawId, body = {}) {
   const id = parseId(rawId);
   const today = todayIso();
   let workshopReschedule = null;
-  let bookingDecision = null;
+  const bookingDecisions = [];
 
   await withTransaction(async (connection) => {
     const booking = await bookingManagementModel.lockById(connection, id);
@@ -236,6 +252,10 @@ async function updateBooking(rawId, body = {}) {
     validateUpdateInput(input);
 
     const statusChanged = input.status !== booking.status;
+    const acceptingPendingBooking =
+      statusChanged &&
+      booking.status === BOOKING_STATUS.PENDING &&
+      input.status === BOOKING_STATUS.TO_PAY;
     const scheduleChanged =
       input.eventDate !== booking.eventDate ||
       input.startTime !== booking.startTime;
@@ -280,6 +300,54 @@ async function updateBooking(rawId, body = {}) {
       });
       input.startTime = schedule.startTime;
       input.endTime = schedule.endTime;
+
+      if (acceptingPendingBooking) {
+        const conflicts = await bookingManagementModel.findPendingConflicts(connection, {
+          bookingId: id,
+          date: input.eventDate,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          forUpdate: true,
+        });
+        const actualIds = conflicts.map((conflict) => Number(conflict.id)).sort((left, right) => left - right);
+        const confirmedIds = readPendingConflictIds(body.pendingConflictIds);
+        if (
+          actualIds.length !== confirmedIds.length ||
+          actualIds.some((conflictId, index) => conflictId !== confirmedIds[index])
+        ) {
+          throw new AppError(
+            'Pending booking conflicts changed. Review the updated conflict list before accepting.',
+            409,
+            { conflicts }
+          );
+        }
+
+        for (const conflict of conflicts) {
+          const conflictingBooking = await bookingManagementModel.lockById(connection, conflict.id);
+          if (!conflictingBooking || conflictingBooking.status !== BOOKING_STATUS.PENDING) {
+            throw new AppError(
+              'Pending booking conflicts changed. Review the updated conflict list before accepting.',
+              409,
+              {
+                conflicts: await bookingManagementModel.findPendingConflicts(connection, {
+                  bookingId: id,
+                  date: input.eventDate,
+                  startTime: input.startTime,
+                  endTime: input.endTime,
+                  forUpdate: true,
+                }),
+              }
+            );
+          }
+          await voucherRedemptionService.releaseForBooking(connection, conflictingBooking, { force: true });
+          await bookingManagementModel.setStatus(connection, conflict.id, BOOKING_STATUS.REJECTED);
+          bookingDecisions.push({
+            bookingId: conflict.id,
+            status: BOOKING_STATUS.REJECTED,
+            reason: 'schedule_conflict',
+          });
+        }
+      }
     } else {
       input.endTime = booking.endTime;
       input.startTime = booking.startTime;
@@ -292,7 +360,7 @@ async function updateBooking(rawId, body = {}) {
       booking.status === BOOKING_STATUS.PENDING &&
       [BOOKING_STATUS.TO_PAY, BOOKING_STATUS.REJECTED].includes(input.status)
     ) {
-      bookingDecision = { bookingId: id, status: input.status };
+      bookingDecisions.push({ bookingId: id, status: input.status });
     }
 
     if (scheduleChanged && isWorkshop) {
@@ -300,8 +368,8 @@ async function updateBooking(rawId, body = {}) {
     }
   });
 
-  if (bookingDecision) {
-    await customerNotificationEmailService.sendBookingDecisionEmail(bookingDecision);
+  for (const decision of bookingDecisions) {
+    await customerNotificationEmailService.sendBookingDecisionEmail(decision);
   }
 
   if (workshopReschedule) {
@@ -309,6 +377,23 @@ async function updateBooking(rawId, body = {}) {
   }
 
   return getBookingDetails(id);
+}
+
+async function getAcceptanceConflicts(rawId) {
+  const id = parseId(rawId);
+  const booking = await bookingManagementModel.findDetails(id);
+  if (!booking) throw new AppError('Booking not found.', 404);
+  if (booking.status !== BOOKING_STATUS.PENDING) {
+    throw new AppError('Only Pending bookings can be accepted.', 409);
+  }
+
+  const conflicts = await bookingManagementModel.findPendingConflicts(pool, {
+    bookingId: id,
+    date: booking.eventDate,
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+  });
+  return { conflicts };
 }
 
 async function getBookingAvailability(rawId, rawDate) {
@@ -374,6 +459,7 @@ async function autoCompleteBookings() {
 module.exports = {
   listBookings,
   getBookingDetails,
+  getAcceptanceConflicts,
   getBookingAvailability,
   updateBooking,
   deleteBooking,

@@ -6,8 +6,10 @@ const voucherModel = require('../models/voucherModel');
 const availabilityService = require('./availabilityService');
 const { toCents, fromCents } = require('./money');
 const { isValidIsoDate, todayIso } = require('./timeHelper');
+const { isCustomerBookingDateAllowed } = require('./customerBookingRules');
 
 const VOUCHER_CODE_PATTERN = /^[A-Z0-9]{1,30}$/;
+const BOOKING_DATE_ERROR = 'Choose a date at least two days from today.';
 
 const asText = (value) => String(value ?? '').trim();
 
@@ -32,7 +34,7 @@ function validateInput(input) {
   if (input.serviceIds.length === 0) errors.serviceIds = 'Choose at least one service.';
 
   if (!isValidIsoDate(input.eventDate)) errors.eventDate = 'Choose a date for your booking.';
-  else if (input.eventDate < todayIso()) errors.eventDate = 'Choose today or a later date.';
+  else if (!isCustomerBookingDateAllowed(input.eventDate, todayIso())) errors.eventDate = BOOKING_DATE_ERROR;
 
   if (Object.keys(errors).length > 0) {
     throw new AppError('Please fix the highlighted fields.', 400, errors);
@@ -151,8 +153,12 @@ async function validateVoucher(rawCode, rawSubtotal) {
 
 async function getAvailability(query = {}, customerId) {
   const ids = availabilityService.readServiceIds(query.serviceIds);
+  const date = asText(query.date);
+  if (isValidIsoDate(date) && !isCustomerBookingDateAllowed(date, todayIso())) {
+    throw new AppError(BOOKING_DATE_ERROR, 400, { date: BOOKING_DATE_ERROR });
+  }
   return availabilityService.getAvailability({
-    date: asText(query.date),
+    date,
     serviceIds: ids,
     executor: pool,
     customerId,

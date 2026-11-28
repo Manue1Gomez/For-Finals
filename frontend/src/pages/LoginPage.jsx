@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthField from '../components/AuthField.jsx';
 import PageStyles from '../components/PageStyles.jsx';
-import { getServerError, postJson } from '../lib/api.js';export default function LoginPage() {
+import { getServerError, postJson } from '../lib/api.js';
+import { LOGIN_PAGE_STYLES } from '../lib/pageStyles.js';
+
+export default function LoginPage() {
   const navigate = useNavigate();
   const [values, setValues] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
@@ -56,6 +59,7 @@ import { getServerError, postJson } from '../lib/api.js';export default function
     <>
       <PageStyles
         bodyClass="auth-page auth-page--login"
+        stylesheets={LOGIN_PAGE_STYLES}
         title="Login | BRB Studios"
       />
       <main className="login">

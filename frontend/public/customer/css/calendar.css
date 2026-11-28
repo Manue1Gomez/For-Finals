@@ -112,7 +112,16 @@
 
 .calendar__day.is-past {
   cursor: default;
-  color: var(--color-placeholder);
+  color: #898990;
+  background: #f1f1f3;
+  border-color: #dcdce0;
+}
+
+.calendar__day.is-past.is-booked::after {
+  display: none;
+}
+
+.calendar__day.is-past.is-booked:not(.is-selected) {
   border-color: #dcdce0;
 }
 

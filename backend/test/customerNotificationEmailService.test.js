@@ -41,6 +41,18 @@ test('rejected booking email does not request payment', () => {
   assert.doesNotMatch(message.text, /downpayment/);
 });
 
+test('conflicting booking rejection email asks the customer to choose another schedule', () => {
+  const message = buildBookingDecisionEmail({
+    booking,
+    status: BOOKING_STATUS.REJECTED,
+    reason: 'schedule_conflict',
+  });
+
+  assert.match(message.text, /overlapping time/);
+  assert.match(message.text, /different time or date/);
+  assert.match(message.html, /different time or date/);
+});
+
 test('reschedule decision emails explain approval and rejection outcomes', () => {
   const approved = buildRescheduleDecisionEmail({
     booking: { ...booking, eventDate: '2026-12-12', startTime: '11:00', endTime: '12:00' },

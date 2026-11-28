@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import AccountLayout from '../components/AccountLayout.jsx';
-import { getJson, postJson } from '../lib/api.js';
+import { getBusinessDate, getBusinessDateOffset, getBusinessMonthStart } from '../lib/businessDate.js';
+import { deleteJson, getJson, postJson } from '../lib/api.js';
 
-const STATUSES = ['', 'Pending', 'To Pay', 'For Verification', 'Confirmed', 'Completed', 'Rejected'];
+const STATUSES = ['', 'Pending', 'To Pay', 'For Verification', 'Confirmed', 'Completed', 'Rejected', 'Cancelled'];
 const INCOMING_STATUSES = new Set(['Pending', 'To Pay', 'For Verification', 'Confirmed']);
 const API_BASE = '/api/customer';
 
@@ -35,6 +36,7 @@ function statusSlug(status) {
     Confirmed: 'confirmed',
     Completed: 'completed',
     Rejected: 'rejected',
+    Cancelled: 'cancelled',
   }[status] || 'pending');
 }
 
@@ -44,21 +46,8 @@ function serviceNames(services) {
   )).filter(Boolean) : [];
 }
 
-function serviceDescription(services) {
-  const descriptions = {
-    'Hair & Makeup': 'Polished hair and makeup for your moment in the spotlight',
-    Photography: 'Portrait, event and editorial sessions with professional retouching.',
-    'Modeling Workshop': 'Hands-on posing, walking and confidence sessions for new talent.',
-    'Pageant Training and Styling': 'Complete pageant coaching and styling.',
-    'Event Coordination': 'Professional event coordination services.',
-    'Event Planning': 'Comprehensive event planning and design.',
-  };
-  return descriptions[serviceNames(services)[0]] ?? '';
-}
-
 function ReschedulePicker({ booking, onSubmitted }) {
-  const today = new Date();
-  const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [month, setMonth] = useState(getBusinessMonthStart);
   const [blockedDates, setBlockedDates] = useState([]);
   const [bookedDates, setBookedDates] = useState([]);
   const [calendarStatus, setCalendarStatus] = useState('');
@@ -71,7 +60,8 @@ function ReschedulePicker({ booking, onSubmitted }) {
   const [durationHours, setDurationHours] = useState(0);
   const availabilityRequest = useRef(0);
   const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
-  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todayIso = getBusinessDate();
+  const earliestBookingDate = getBusinessDateOffset(2);
   const days = Array.from({ length: new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate() }, (_, index) => index + 1);
   const firstDay = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
 
@@ -122,6 +112,10 @@ function ReschedulePicker({ booking, onSubmitted }) {
       setError('Please choose a new date.');
       return;
     }
+    if (date < earliestBookingDate) {
+      setError('Choose a date at least two days from today.');
+      return;
+    }
     if (!selectedSlot) {
       setError('Choose an available time slot.');
       return;
@@ -158,7 +152,7 @@ function ReschedulePicker({ booking, onSubmitted }) {
           {Array.from({ length: firstDay }, (_, index) => <span key={`empty-${index}`} />)}
           {days.map((day) => {
             const iso = `${monthKey}-${String(day).padStart(2, '0')}`;
-            const past = iso < todayIso;
+            const past = iso < earliestBookingDate;
             const blocked = blockedDates.includes(iso);
             const booked = bookedDates.includes(iso);
             return (
@@ -221,6 +215,9 @@ export default function MyBookingsPage() {
   const [gcashPending, setGcashPending] = useState(false);
   const [showReschedule, setShowReschedule] = useState(false);
   const [rescheduleKey, setRescheduleKey] = useState(0);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelError, setCancelError] = useState('');
+  const [cancelPending, setCancelPending] = useState(false);
   const fileInput = useRef(null);
 
   useEffect(() => {
@@ -277,21 +274,26 @@ export default function MyBookingsPage() {
   }, [proofFile]);
 
   useEffect(() => {
-    if (!bookingId) return undefined;
+    if (!bookingId && !cancelTarget) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') closeDetail();
+      if (event.key === 'Escape') {
+        if (cancelTarget) {
+          if (!cancelPending) setCancelTarget(null);
+        } else {
+          closeDetail();
+        }
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [bookingId]);
+  }, [bookingId, cancelPending, cancelTarget]);
 
-  const today = new Date();
-  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todayIso = getBusinessDate();
   const sortedBookings = useMemo(() => {
     const incoming = bookings.filter((booking) => INCOMING_STATUSES.has(booking.status) && booking.eventDate >= todayIso)
       .sort((a, b) => a.eventDate.localeCompare(b.eventDate) || Number(a.id) - Number(b.id));
@@ -304,6 +306,29 @@ export default function MyBookingsPage() {
     const response = await getJson(url);
     if (!response.ok) throw new Error(response.data.message || 'Could not reload your bookings.');
     setBookings(Array.isArray(response.data.bookings) ? response.data.bookings : []);
+  }
+
+  async function cancelBooking() {
+    if (!cancelTarget) return;
+    setCancelPending(true);
+    setCancelError('');
+    try {
+      const response = await deleteJson(`${API_BASE}/bookings/${cancelTarget.id}`);
+      if (!response.ok) {
+        throw new Error(response.data?.message || 'Could not cancel this booking.');
+      }
+      setBookings((current) => current.map((booking) => (
+        booking.id === cancelTarget.id
+          ? { ...booking, status: 'Cancelled', canCancel: false }
+          : booking
+      )));
+      setCancelTarget(null);
+      setActiveStatus('Cancelled');
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : 'Unable to cancel this booking.');
+    } finally {
+      setCancelPending(false);
+    }
   }
 
   async function loadDetail(id) {
@@ -384,10 +409,18 @@ export default function MyBookingsPage() {
         setPaymentError(data.errors?.proof || data.message || 'Could not submit payment.');
         return;
       }
+      const submittedBookingId = detail.id;
       setPaymentMessage('Payment submitted. Waiting for studio verification.');
       setProofFile(null);
       setDetail((current) => ({ ...current, status: 'For Verification', pendingPaymentReview: true }));
+      setViewMode('details');
       setActiveStatus('For Verification');
+      await loadDetail(submittedBookingId);
+      try {
+        await refreshBookings('For Verification');
+      } catch {
+        setListError('Payment was submitted, but the bookings list could not be refreshed.');
+      }
     } catch {
       setPaymentError('Unable to reach the server.');
     } finally {
@@ -422,15 +455,24 @@ export default function MyBookingsPage() {
     async function showReturn() {
       const booking = await loadDetail(id);
       setBookingId(id);
-      setInitialView('details');
-      setViewMode('details');
+      const needsPaymentProof = Boolean(booking && ['To Pay', 'Confirmed'].includes(booking.status) && booking.balance > 0);
+      setInitialView(needsPaymentProof ? 'payment' : 'details');
+      setViewMode(needsPaymentProof ? 'payment' : 'details');
+      if (booking) {
+        setActiveStatus(booking.status);
+        try {
+          await refreshBookings(booking.status);
+        } catch {
+          setListError('Payment status was loaded, but the bookings list could not be refreshed.');
+        }
+      }
       const payment = booking?.payments?.find((entry) => String(entry.id) === paymentId);
       if (payment?.status === 'Verified') {
-        setPaymentMessage('NetCorePay confirmed your GCash payment.');
+        setPaymentMessage('The studio verified your GCash payment.');
       } else if (payment?.status === 'Rejected') {
-        setPaymentError('The GCash payment was not completed. You can try again.');
+        setPaymentError(payment.rejectReason || 'The GCash payment was not completed. You can try again.');
       } else {
-        setPaymentMessage('Checkout returned. Waiting for NetCorePay payment confirmation; refresh this booking shortly.');
+        setPaymentMessage('If your GCash payment was successful, upload its screenshot below and submit it for studio verification. It will not be recorded as paid until the studio approves it.');
       }
     }
     void showReturn();
@@ -438,7 +480,7 @@ export default function MyBookingsPage() {
 
   function renderCard(booking) {
     const names = serviceNames(booking.services);
-    const over = ['Completed', 'Rejected'].includes(booking.status);
+    const over = ['Completed', 'Rejected', 'Cancelled'].includes(booking.status);
     return (
       <li className="booking-card" key={booking.id}>
         <div className="booking-card__header">
@@ -446,14 +488,11 @@ export default function MyBookingsPage() {
           <span className="booking-card__badge">{booking.status}</span>
         </div>
         <div className="booking-card__body">
-          {booking.imageUrl && (
-            <div className="booking-card__media">
-              <img className="booking-card__image" src={booking.imageUrl} alt={names.join(' + ')} />
-            </div>
-          )}
+          <div className="booking-card__media">
+            {booking.imageUrl && <img className="booking-card__image" src={booking.imageUrl} alt={names.join(' + ')} />}
+          </div>
           <div className="booking-card__info">
             <p className="booking-card__services">{names.join(' + ') || '—'}</p>
-            <p className="booking-card__description">{serviceDescription(booking.services)}</p>
             <p className="booking-card__price">{formatPeso(booking.totalAmount)}</p>
             <p className="booking-card__date">{formatDate(booking.eventDate)}</p>
             <p className="booking-card__time">{booking.timeLabel}</p>
@@ -462,11 +501,20 @@ export default function MyBookingsPage() {
         <div className="booking-card__actions">
           {booking.status === 'To Pay' && <button className="booking-card__btn booking-card__btn--solid" type="button" onClick={() => openDetail(booking.id, 'payment')}>Pay</button>}
           {booking.status === 'Confirmed' && <button className="booking-card__btn booking-card__btn--solid" type="button" onClick={() => openDetail(booking.id)}>View Details</button>}
+          {booking.canCancel && (
+            <button
+              className="booking-card__btn booking-card__btn--outline"
+              type="button"
+              onClick={() => { setCancelTarget(booking); setCancelError(''); }}
+            >
+              Cancel Booking
+            </button>
+          )}
           {over && <Link className="booking-card__btn booking-card__btn--outline" to="/customer/html/book-service.html">Book Again</Link>}
           {['Confirmed', 'Completed'].includes(booking.status) && <a className="booking-card__btn booking-card__btn--outline" href={`/customer/html/contract.html?id=${booking.id}`} target="_blank" rel="noopener noreferrer">Contract</a>}
           {['Pending', 'For Verification'].includes(booking.status) && (
             <p className="booking-card__waiting">
-              {booking.status === 'For Verification' ? 'Downpayment submitted — awaiting verification...' : 'Waiting for studio approval...'}
+              {booking.status === 'For Verification' ? 'Payment submitted — awaiting verification...' : 'Waiting for studio approval...'}
             </p>
           )}
         </div>
@@ -475,19 +523,21 @@ export default function MyBookingsPage() {
   }
 
   const canPay = detail && ['To Pay', 'Confirmed'].includes(detail.status) && detail.balance > 0;
-  const isPaymentOnly = initialView === 'payment' && detail?.status === 'To Pay' && viewMode === 'payment';
-  const isDetailsOnly = initialView === 'payment' && detail?.status === 'To Pay' && viewMode === 'details';
+  const isPaymentOnly = viewMode === 'payment'
+    && ((initialView === 'payment' && detail?.status === 'To Pay') || detail?.status === 'Confirmed');
+  const isDetailsOnly = viewMode === 'details';
   const due = detail?.status === 'To Pay'
     ? Math.max(detail.requiredDownpayment - detail.amountPaid, 0)
     : detail?.balance ?? 0;
   const statusLabel = detail?.pendingPaymentReview || detail?.status === 'For Verification'
-    ? 'Downpayment Awaiting Verification'
+    ? 'Payment Awaiting Verification'
     : ({
       Pending: 'Waiting for Studio Approval',
       'To Pay': 'Approved — Awaiting Downpayment',
       Confirmed: 'Confirmed',
       Completed: 'Completed',
       Rejected: 'Rejected',
+      Cancelled: 'Cancelled',
     }[detail?.status] || detail?.status);
 
   return (
@@ -560,7 +610,13 @@ export default function MyBookingsPage() {
                     )}
                     {voucherError && <p className="form-alert form-alert--error detail__alert" role="alert">{voucherError}</p>}
                     <div className="detail__row"><span className="detail__label">Total:</span><span>{formatPeso(detail.totalAmount)}</span></div>
-                    {canPay && <div className="detail__row"><span className="detail__label">50% Downpayment:</span><span className="detail__downpayment">{formatPeso(detail.requiredDownpayment)}</span></div>}
+                    {detail.status === 'To Pay' && canPay && <div className="detail__row"><span className="detail__label">50% Downpayment:</span><span className="detail__downpayment">{formatPeso(detail.requiredDownpayment)}</span></div>}
+                    {detail.status === 'Confirmed' && (
+                      <>
+                        <div className="detail__row"><span className="detail__label">Amount Paid:</span><span>{formatPeso(detail.amountPaid)}</span></div>
+                        <div className="detail__row"><span className="detail__label">Remaining Balance:</span><span>{formatPeso(detail.balance)}</span></div>
+                      </>
+                    )}
                   </section>
 
                   {canPay && (
@@ -568,9 +624,21 @@ export default function MyBookingsPage() {
                       <p className="detail__payment-due"><span>{detail.status === 'To Pay' ? 'Downpayment due' : 'Remaining balance'}</span><strong>{formatPeso(due)}</strong></p>
                       {paymentMessage && <p className="form-alert form-alert--success detail__alert" role="status">{paymentMessage}</p>}
                       {paymentError && <p className="form-alert form-alert--error detail__alert" role="alert">{paymentError}</p>}
-                      <p className="detail__proof-label">Pay via GCash through NetCorePay. Payment is verified automatically.</p>
-                      <button className="detail__gcash-btn" type="button" disabled={gcashPending} onClick={payWithGCash}>{gcashPending ? 'Opening NetCorePay...' : 'Pay with GCash'}</button>
-                      <div className="detail__divider"><span>or upload proof manually</span></div>
+                      {detail.status === 'To Pay' && (
+                        <>
+                          <p className="detail__proof-label">Pay via GCash through NetCorePay, then upload your payment screenshot. The studio must verify the proof before the payment is recorded.</p>
+                          <button className="detail__gcash-btn" type="button" disabled={gcashPending} onClick={payWithGCash}>{gcashPending ? 'Opening NetCorePay...' : 'Pay with GCash'}</button>
+                          <div className="detail__divider"><span>screenshot required for every payment</span></div>
+                        </>
+                      )}
+                      {detail.status === 'Confirmed' && (
+                        <>
+                          <p className="detail__proof-label">Pay your remaining balance with GCash, then upload the screenshot. The studio will verify it in the Payments page before recording the payment.</p>
+                          <button className="detail__gcash-btn" type="button" disabled={gcashPending} onClick={payWithGCash}>
+                            {gcashPending ? 'Opening NetCorePay...' : 'Pay Remaining Balance with GCash'}
+                          </button>
+                        </>
+                      )}
                       <div className="detail__proof-upload">
                         <p className="detail__proof-label">Proof of payment (screenshot):</p>
                         <label className={`detail__proof-drop${proofFile ? ' has-file' : ''}`}>
@@ -585,7 +653,7 @@ export default function MyBookingsPage() {
                           </div>
                         )}
                       </div>
-                      <button className="detail__submit-btn" type="button" disabled={paymentPending} onClick={submitPayment}>{paymentPending ? 'Submitting...' : 'Submit Manual Proof'}</button>
+                      <button className="detail__submit-btn" type="button" disabled={paymentPending} onClick={submitPayment}>{paymentPending ? 'Submitting...' : 'Submit Payment Proof'}</button>
                     </section>
                   )}
 
@@ -633,12 +701,68 @@ export default function MyBookingsPage() {
                   )}
 
                   <div className="detail__modal-actions">
-                    {detail.canReschedule && <button className="booking-card__btn booking-card__btn--outline" id="rescheduleToggleBtn" type="button" onClick={() => { setShowReschedule((shown) => !shown); setRescheduleKey((key) => key + 1); }}>{detail.rescheduleRequest?.status === 'Pending' ? 'Change Reschedule Request' : 'Reschedule Booking'}</button>}
+                    {(detail.canReschedule || detail.rescheduleUnavailableReason) && (
+                      <button
+                        className="booking-card__btn booking-card__btn--outline"
+                        id="rescheduleToggleBtn"
+                        type="button"
+                        disabled={!detail.canReschedule}
+                        onClick={() => { setShowReschedule((shown) => !shown); setRescheduleKey((key) => key + 1); }}
+                      >
+                        Reschedule Booking
+                      </button>
+                    )}
+                    {detail.rescheduleUnavailableReason && (
+                      <p className="detail__reschedule-unavailable" role="status">{detail.rescheduleUnavailableReason}</p>
+                    )}
+                    {detail.status === 'Confirmed' && viewMode === 'details' && detail.balance > 0 && (
+                      <button
+                        className="booking-card__btn booking-card__btn--solid"
+                        type="button"
+                        onClick={() => setViewMode('payment')}
+                      >
+                        Pay Remaining Balance
+                      </button>
+                    )}
+                    {['Confirmed', 'Completed'].includes(detail.status) && viewMode === 'details' && detail.balance <= 0 && (
+                      <button className="booking-card__btn booking-card__btn--solid" type="button" disabled>
+                        Payment Completed
+                      </button>
+                    )}
+                    {detail.status === 'Confirmed' && viewMode === 'payment' && (
+                      <button className="booking-card__btn booking-card__btn--outline" type="button" onClick={() => setViewMode('details')}>
+                        Back to Details
+                      </button>
+                    )}
                     {initialView === 'payment' && detail.status === 'To Pay' && <button className="booking-card__btn booking-card__btn--outline" type="button" onClick={() => setViewMode(viewMode === 'payment' ? 'details' : 'payment')}>{viewMode === 'payment' ? 'View Details' : 'Back to Payment'}</button>}
-                    <button className="booking-card__btn booking-card__btn--outline" type="button" onClick={closeDetail}>Close</button>
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {cancelTarget && (
+        <div
+          className="modal-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !cancelPending) setCancelTarget(null);
+          }}
+        >
+          <div className="modal booking-cancel-modal" role="dialog" aria-modal="true" aria-labelledby="cancelBookingTitle">
+            <div className="modal__body">
+              <h2 className="detail__summary-title" id="cancelBookingTitle">Cancel this booking?</h2>
+              <p>Cancel BRB - {cancelTarget.reference} on {formatDate(cancelTarget.eventDate)}? This cannot be undone.</p>
+              {cancelError && <p className="form-alert form-alert--error detail__alert" role="alert">{cancelError}</p>}
+              <div className="booking-cancel-modal__actions">
+                <button className="booking-card__btn booking-card__btn--outline" type="button" disabled={cancelPending} onClick={() => setCancelTarget(null)}>
+                  Keep Booking
+                </button>
+                <button className="booking-card__btn booking-card__btn--solid" type="button" disabled={cancelPending} onClick={() => void cancelBooking()}>
+                  {cancelPending ? 'Cancelling...' : 'Cancel Booking'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

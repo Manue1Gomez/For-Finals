@@ -26,6 +26,12 @@ export async function putJson(url, payload) {
   return { ok: response.ok, status: response.status, data };
 }
 
+export async function deleteJson(url) {
+  const response = await fetch(url, { method: 'DELETE' });
+  const data = await response.json().catch(() => ({}));
+  return { ok: response.ok, status: response.status, data };
+}
+
 export function getServerError(response, fieldNames) {
   const errors = response.data?.errors;
   const fieldErrors = {};

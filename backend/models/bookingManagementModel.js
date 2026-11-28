@@ -206,6 +206,27 @@ async function findBusyIntervals(connection, { date, bookingId = 0, statuses, fo
   }));
 }
 
+async function findPendingConflicts(executor, { bookingId, date, startTime, endTime, forUpdate = false }) {
+  const [rows] = await executor.query(
+    `SELECT b.booking_id AS id,
+            ${REFERENCE} AS reference,
+            ${CLIENT_NAME} AS customerName,
+            DATE_FORMAT(b.event_date, '%Y-%m-%d') AS eventDate,
+            TIME_FORMAT(b.start_time, '%H:%i') AS startTime,
+            TIME_FORMAT(b.end_time, '%H:%i') AS endTime
+       FROM booking b
+       JOIN customer c ON c.customer_id = b.customer_id
+      WHERE b.event_date = ?
+        AND b.booking_id <> ?
+        AND b.status = 'Pending'
+        AND b.start_time < ?
+        AND b.end_time > ?
+      ORDER BY b.start_time, b.booking_id${forUpdate ? ' FOR UPDATE' : ''}`,
+    [date, bookingId, `${endTime}:00`, `${startTime}:00`]
+  );
+  return rows;
+}
+
 async function findConflict(connection, { bookingId, date, startTime, endTime, serviceIds, statuses }) {
   if (serviceIds.length === 0) return null;
 
@@ -277,6 +298,7 @@ module.exports = {
   findBookingServices,
   lockScheduleDate,
   findBusyIntervals,
+  findPendingConflicts,
   findConflict,
   addToPaid,
   setStatus,

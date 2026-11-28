@@ -53,7 +53,7 @@ async function findPendingForReview() {
        JOIN booking b ON b.booking_id = p.booking_id
        JOIN customer c ON c.customer_id = b.customer_id
        WHERE p.status = 'Pending'
-         AND p.reference_number IS NULL
+         AND p.proof_path IS NOT NULL
       ORDER BY p.submitted_at, p.payment_id`
   );
   return rows;
@@ -65,7 +65,8 @@ async function findPendingForBooking(connection, bookingId) {
              payment_type AS type,
              amount,
              method,
-             reference_number AS referenceNumber
+             reference_number AS referenceNumber,
+             proof_path AS proofUrl
         FROM payment
        WHERE booking_id = ? AND status = 'Pending'
        ORDER BY submitted_at, payment_id
@@ -74,6 +75,18 @@ async function findPendingForBooking(connection, bookingId) {
     [bookingId]
   );
   return row || null;
+}
+
+async function hasPendingPaymentForBooking(connection, bookingId) {
+  const [[row]] = await connection.query(
+    `SELECT EXISTS(
+       SELECT 1 FROM payment
+        WHERE booking_id = ? AND status = 'Pending'
+          AND proof_path IS NOT NULL
+     ) AS hasPendingPayment`,
+    [bookingId]
+  );
+  return Number(row.hasPendingPayment) === 1;
 }
 
 async function hasActivePaymentForBooking(connection, bookingId) {
@@ -108,6 +121,18 @@ async function updateGatewayReference(connection, id, idempotencyKey, providerPa
   return result.affectedRows > 0;
 }
 
+async function attachProof(connection, id, proofPath) {
+  const [result] = await connection.query(
+    `UPDATE payment
+        SET proof_path = ?
+      WHERE payment_id = ?
+        AND status = 'Pending'
+        AND proof_path IS NULL`,
+    [proofPath, id]
+  );
+  return result.affectedRows > 0;
+}
+
 async function findGatewayByReference(connection, providerPaymentId, idempotencyKey) {
   const [[row]] = await connection.query(
     `SELECT ${PAYMENT_FIELDS}
@@ -120,15 +145,6 @@ async function findGatewayByReference(connection, providerPaymentId, idempotency
     [providerPaymentId, idempotencyKey || providerPaymentId, providerPaymentId]
   );
   return row || null;
-}
-
-async function markGatewayVerified(connection, id, providerPaymentId) {
-  await connection.query(
-    `UPDATE payment
-         SET status = 'Verified', reference_number = ?, reviewed_at = NOW()
-       WHERE payment_id = ? AND status = 'Pending'`,
-    [providerPaymentId, id]
-  );
 }
 
 async function markGatewayRejected(connection, id, providerPaymentId, reason) {
@@ -223,11 +239,12 @@ async function verifySchema() {
 module.exports = {
   findPendingForReview,
   findPendingForBooking,
+  hasPendingPaymentForBooking,
   hasActivePaymentForBooking,
   createPendingGatewayPayment,
   updateGatewayReference,
+  attachProof,
   findGatewayByReference,
-  markGatewayVerified,
   markGatewayRejected,
   findOutstandingBookings,
   findBookingId,

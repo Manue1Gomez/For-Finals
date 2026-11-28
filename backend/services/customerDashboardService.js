@@ -1,7 +1,6 @@
 const AppError = require('./appError');
 const { pool, withTransaction } = require('../config/db');
 const { BOOKING_STATUS } = require('../config/bookingStatus');
-const { RESCHEDULABLE_STATUSES } = require('../config/bookingRules');
 const bookingManagementModel = require('../models/bookingManagementModel');
 const voucherModel = require('../models/voucherModel');
 const customerDashboardModel = require('../models/customerDashboardModel');
@@ -24,6 +23,12 @@ const bcrypt = require('bcryptjs');
 const availabilityService = require('./availabilityService');
 const { getScheduleDetails } = require('./serviceScheduleRules');
 const voucherRedemptionService = require('./voucherRedemptionService');
+const {
+  canCustomerCancel,
+  canCustomerReschedule,
+  isCustomerBookingDateAllowed,
+  isWithinCustomerRescheduleWindow,
+} = require('./customerBookingRules');
 
 // ─── Payment proof storage ────────────────────────────────────────────────────
 
@@ -96,6 +101,9 @@ function toBookingEntry(row) {
     requiredDownpayment: fromCents(downpaymentCents),
     downpaymentPaid: paidCents >= downpaymentCents,
     voucherCode: row.voucherCode || null,
+    canCancel: canCustomerCancel(row.status)
+      && paidCents === 0
+      && Number(row.hasPendingPayment) !== 1,
   };
 }
 
@@ -108,6 +116,7 @@ const VALID_STATUSES = new Set([
   'Confirmed',
   'Completed',
   'Rejected',
+  'Cancelled',
 ]);
 
 async function listBookings(customerId, rawStatus) {
@@ -139,8 +148,16 @@ async function getBookingDetails(customerId, rawId) {
   const totalCents = toCents(booking.totalAmount);
   const paidCents = toCents(booking.amountPaid);
   const downpaymentCents = requiredDownpaymentCents(totalCents);
-  const hasPendingPayment = payments.some((payment) => payment.status === 'Pending');
+  const hasPendingPayment = payments.some((payment) => payment.status === 'Pending' && Boolean(payment.proofUrl));
+  const hasPendingPaymentIntent = payments.some((payment) => payment.status === 'Pending');
   const status = customerFacingBookingStatus(booking.status, hasPendingPayment);
+  const canRescheduleStatus = [
+    CUSTOMER_BOOKING_STATUS.FOR_VERIFICATION,
+    BOOKING_STATUS.CONFIRMED,
+  ].includes(status);
+  const today = todayIso();
+  const withinRescheduleWindow = isWithinCustomerRescheduleWindow(booking.eventDate, today);
+  const isWorkshop = services.some((service) => /modeling workshop/i.test(service.name));
 
   return {
     id: booking.id,
@@ -149,8 +166,7 @@ async function getBookingDetails(customerId, rawId) {
     startTime: booking.startTime,
     endTime: booking.endTime,
     status,
-    pendingPaymentReview: status === CUSTOMER_BOOKING_STATUS.FOR_VERIFICATION &&
-      booking.status === BOOKING_STATUS.TO_PAY,
+    pendingPaymentReview: status === CUSTOMER_BOOKING_STATUS.FOR_VERIFICATION && hasPendingPayment,
     subtotal: fromCents(toCents(booking.subtotal)),
     discountAmount: fromCents(toCents(booking.discountAmount || 0)),
     totalAmount: fromCents(totalCents),
@@ -159,15 +175,20 @@ async function getBookingDetails(customerId, rawId) {
     requiredDownpayment: fromCents(downpaymentCents),
     downpaymentPaid: paidCents >= downpaymentCents,
     voucherCode: booking.voucherCode || null,
+    canCancel: canCustomerCancel(status) && paidCents === 0 && !hasPendingPaymentIntent,
     services: services.map((s) => ({
       id: s.id,
       name: s.name,
       price: fromCents(toCents(s.price)),
       durationHours: s.durationHours === null ? null : Number(s.durationHours),
     })),
-    canReschedule: RESCHEDULABLE_STATUSES.includes(status) &&
-      !services.some((service) => /modeling workshop/i.test(service.name)),
-    payments: payments.map((p) => ({
+    canReschedule: canCustomerReschedule(status, booking.eventDate, today) && !isWorkshop,
+    rescheduleUnavailableReason: canRescheduleStatus && !withinRescheduleWindow && !isWorkshop
+      ? 'Reschedule requests must be submitted at least two days before the booking date.'
+      : null,
+    payments: payments
+      .filter((payment) => payment.status !== 'Pending' || Boolean(payment.proofUrl))
+      .map((p) => ({
       id: p.id,
       type: p.type,
       amount: fromCents(toCents(p.amount)),
@@ -176,9 +197,35 @@ async function getBookingDetails(customerId, rawId) {
       rejectReason: p.rejectReason,
       submittedAt: p.submittedAt,
       reviewedAt: p.reviewedAt,
-    })),
+      })),
     rescheduleRequest: rescheduleRequest || null,
   };
+}
+
+async function cancelBooking(customerId, rawBookingId) {
+  const bookingId = parseBookingId(rawBookingId);
+
+  await withTransaction(async (connection) => {
+    const booking = await bookingManagementModel.lockById(connection, bookingId);
+    if (!booking || booking.customerId !== customerId) {
+      throw new AppError('Booking not found.', 404);
+    }
+
+    if (!canCustomerCancel(booking.status)) {
+      throw new AppError('Only Pending and To Pay bookings can be cancelled.', 409);
+    }
+    if (toCents(booking.amountPaid) > 0) {
+      throw new AppError('A booking with a recorded payment cannot be cancelled online.', 409);
+    }
+    if (await paymentModel.findPendingForBooking(connection, bookingId)) {
+      throw new AppError('A GCash checkout or payment proof is still pending. Resolve it before cancelling this booking.', 409);
+    }
+
+    await voucherRedemptionService.releaseForBooking(connection, booking, { force: true });
+    await bookingManagementModel.setStatus(connection, bookingId, BOOKING_STATUS.CANCELLED);
+  });
+
+  return { bookingId, status: BOOKING_STATUS.CANCELLED };
 }
 
 // ─── Submit payment ───────────────────────────────────────────────────────────
@@ -208,14 +255,37 @@ async function submitPayment(customerId, rawBookingId, file) {
     const remainingCents = totalCents - paidCents;
 
     if (remainingCents <= 0) throw new AppError('This booking is already fully paid.', 409);
-    if (await paymentModel.findPendingForBooking(connection, bookingId)) {
-      throw new AppError('There is already a payment awaiting review for this booking.', 409);
+    const type = paidCents === 0 ? 'Downpayment' : 'Balance';
+    const amount = fromCents(paidCents === 0 ? requiredDownpaymentCents(totalCents) : remainingCents);
+    const pending = await paymentModel.findPendingForBooking(connection, bookingId);
+
+    if (pending) {
+      const isUnsubmittedGCashCheckout =
+        pending.method === 'GCash' &&
+        Boolean(pending.referenceNumber) &&
+        !pending.proofUrl;
+      if (!isUnsubmittedGCashCheckout) {
+        throw new AppError('There is already a payment awaiting review for this booking.', 409);
+      }
+      if (pending.type !== type || toCents(pending.amount) !== toCents(amount)) {
+        throw new AppError('The booking balance changed. Refresh the booking before submitting proof.', 409);
+      }
+      const attached = await paymentModel.attachProof(connection, pending.id, proofUrl);
+      if (!attached) {
+        throw new AppError('This payment checkout has already been submitted for review.', 409);
+      }
+      await voucherRedemptionService.consumeForBooking(connection, booking);
+      return {
+        paymentId: pending.id,
+        bookingId,
+        type,
+        amount,
+        status: 'Pending',
+        proofUrl,
+      };
     }
 
     await voucherRedemptionService.consumeForBooking(connection, booking);
-
-    const type = paidCents === 0 ? 'Downpayment' : 'Balance';
-    const amount = fromCents(paidCents === 0 ? requiredDownpaymentCents(totalCents) : remainingCents);
 
     const [result] = await connection.query(
       `INSERT INTO payment (booking_id, payment_type, amount, method, proof_path, status, submitted_at)
@@ -293,6 +363,9 @@ async function startGCashPayment(customerId, rawBookingId) {
     const existing = await paymentModel.findPendingForBooking(connection, bookingId);
 
     if (existing) {
+      if (existing.proofUrl) {
+        throw new AppError('Your payment proof is awaiting studio review. Check My Bookings for updates.', 409);
+      }
       const localKey = isLocalCheckoutKey(existing.referenceNumber);
       const providerPayment = /^pay_[A-Za-z0-9_-]{1,45}$/.test(existing.referenceNumber || '');
       if (
@@ -402,6 +475,10 @@ async function startGCashPayment(customerId, rawBookingId) {
     }
   }
 
+  if (payment.status === 'succeeded') {
+    throw new AppError('GCash checkout is complete. Upload your payment screenshot for studio verification.', 409);
+  }
+
   return {
     paymentId: intent.paymentId,
     amount: fromCents(intent.amountCents),
@@ -461,10 +538,11 @@ async function requestReschedule(customerId, rawBookingId, body) {
   const bookingId = parseBookingId(rawBookingId);
   const newDate = String(body?.newDate ?? '').trim();
   const newStartTime = String(body?.newStartTime ?? '').trim();
+  const today = todayIso();
 
   const errors = {};
   if (!isValidIsoDate(newDate)) errors.newDate = 'Choose a valid date.';
-  else if (newDate < todayIso()) errors.newDate = 'Choose today or a future date.';
+  else if (!isCustomerBookingDateAllowed(newDate, today)) errors.newDate = 'Choose a date at least two days from today.';
   if (Object.keys(errors).length > 0) throw new AppError('Please fix the highlighted fields.', 400, errors);
 
   return withTransaction(async (connection) => {
@@ -472,8 +550,13 @@ async function requestReschedule(customerId, rawBookingId, body) {
 
     if (!booking || booking.customerId !== customerId) throw new AppError('Booking not found.', 404);
 
-    if (!RESCHEDULABLE_STATUSES.includes(booking.status)) {
-      throw new AppError('Only confirmed or awaiting-payment bookings can be rescheduled.', 409);
+    const pendingPayment = await paymentModel.findPendingForBooking(connection, bookingId);
+    const customerStatus = customerFacingBookingStatus(booking.status, Boolean(pendingPayment?.proofUrl));
+    if (!canCustomerReschedule(customerStatus, booking.eventDate, today)) {
+      const message = [CUSTOMER_BOOKING_STATUS.FOR_VERIFICATION, BOOKING_STATUS.CONFIRMED].includes(customerStatus)
+        ? 'Reschedule requests must be submitted at least two days before the booking date.'
+        : 'Only For Verification and Confirmed bookings can be rescheduled.';
+      throw new AppError(message, 409, { newDate: message });
     }
 
     const services = await bookingManagementModel.findBookingServices(connection, bookingId);
@@ -530,19 +613,30 @@ async function requestReschedule(customerId, rawBookingId, body) {
 
 async function getRescheduleAvailability(customerId, rawBookingId, rawDate) {
   const bookingId = parseBookingId(rawBookingId);
+  const date = String(rawDate ?? '').trim();
+  const today = todayIso();
   const booking = await customerDashboardModel.findOneByCustomer(customerId, bookingId);
   if (!booking) throw new AppError('Booking not found.', 404);
-  if (!RESCHEDULABLE_STATUSES.includes(booking.status)) {
-    throw new AppError('Only confirmed or awaiting-payment bookings can be rescheduled.', 409);
+  const hasPendingPayment = await paymentModel.hasPendingPaymentForBooking(pool, bookingId);
+  const customerStatus = customerFacingBookingStatus(booking.status, hasPendingPayment);
+  if (!canCustomerReschedule(customerStatus, booking.eventDate, today)) {
+    const message = [CUSTOMER_BOOKING_STATUS.FOR_VERIFICATION, BOOKING_STATUS.CONFIRMED].includes(customerStatus)
+      ? 'Reschedule requests must be submitted at least two days before the booking date.'
+      : 'Only For Verification and Confirmed bookings can be rescheduled.';
+    throw new AppError(message, 409);
   }
 
   const services = await bookingManagementModel.findBookingServices(pool, bookingId);
   if (getScheduleDetails(services).isWorkshop) {
     throw new AppError('Modeling Workshop can only be rescheduled by the studio owner.', 409);
   }
+  if (isValidIsoDate(date) && !isCustomerBookingDateAllowed(date, today)) {
+    const message = 'Choose a date at least two days from today.';
+    throw new AppError(message, 400, { date: message });
+  }
 
   return availabilityService.getAvailability({
-    date: String(rawDate ?? '').trim(),
+    date,
     serviceIds: services.map((service) => service.id),
     executor: pool,
     excludeBookingId: bookingId,
@@ -662,6 +756,7 @@ async function getProfile(customerId) {
 module.exports = {
   listBookings,
   getBookingDetails,
+  cancelBooking,
   submitPayment,
   startGCashPayment,
   applyVoucher,

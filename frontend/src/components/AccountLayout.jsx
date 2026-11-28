@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PageStyles from './PageStyles.jsx';
 import { postJson } from '../lib/api.js';
+import { ACCOUNT_PAGE_STYLES, ACCOUNT_SHARED_STYLES } from '../lib/pageStyles.js';
+
+const EMPTY_STYLESHEETS = [];
 
 function LogoutConfirmDialog({ open, onClose }) {
   const dialogRef = useRef(null);
@@ -40,6 +43,7 @@ export default function AccountLayout({
   activePage,
   children,
   customer,
+  pageStyles = EMPTY_STYLESHEETS,
   title,
 }) {
   const navigate = useNavigate();
@@ -52,6 +56,10 @@ export default function AccountLayout({
   const headerRef = useRef(null);
   const sidebarRef = useRef(null);
   const toggleRef = useRef(null);
+  const stylesheets = useMemo(
+    () => [...ACCOUNT_SHARED_STYLES, ...(ACCOUNT_PAGE_STYLES[activePage] ?? []), ...pageStyles],
+    [activePage, pageStyles],
+  );
   const customerName = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ') || 'Customer';
 
   useEffect(() => {
@@ -139,7 +147,7 @@ export default function AccountLayout({
 
   return (
     <>
-      <PageStyles bodyClass="account-page" title={title} />
+      <PageStyles bodyClass="account-page" stylesheets={stylesheets} title={title} />
       <header className="site-header account-site-header" ref={headerRef}>
         <div className="site-header__inner">
           <Link className="site-header__brand" to="/customer/html/home.html">

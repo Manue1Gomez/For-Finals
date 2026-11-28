@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS booking (
   discount_amount  DECIMAL(10,2) NOT NULL DEFAULT 0,
   total_amount     DECIMAL(10,2) NOT NULL,
   amount_paid      DECIMAL(10,2) NOT NULL DEFAULT 0,
-  status           ENUM('Pending','To Pay','Confirmed','Completed','Rejected') NOT NULL DEFAULT 'Pending',
+  status           ENUM('Pending','To Pay','Confirmed','Completed','Rejected','Cancelled') NOT NULL DEFAULT 'Pending',
   created_at       TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at       TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (booking_id),

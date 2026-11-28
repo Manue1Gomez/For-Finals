@@ -147,6 +147,9 @@ async function verifyPayment(rawId) {
     if (payment.status !== 'Pending') {
       throw new AppError(`This payment was already ${payment.status.toLowerCase()}.`, 409);
     }
+    if (!payment.proofUrl) {
+      throw new AppError('A payment screenshot must be submitted before this payment can be verified.', 409);
+    }
     if (!PAYABLE_STATUSES.includes(booking.status)) {
       throw new AppError('This booking has not been accepted, so its payment cannot be verified.', 409);
     }
@@ -301,31 +304,10 @@ async function handleNetcorepayWebhook(event) {
       throw new Error(`NetCorePay payment ${providerPaymentId} exceeds the booking balance.`);
     }
 
-    const paidAfter = paidCents + amountCents;
-    const statusAfter = statusAfterPayment(booking.status, paidAfter, totalCents);
-
-    await paymentModel.markGatewayVerified(connection, payment.id, providerPaymentId);
-    await bookingManagementModel.addToPaid(connection, booking.id, fromCents(amountCents));
-    if (statusAfter !== booking.status) {
-      await bookingManagementModel.setStatus(connection, booking.id, statusAfter);
-    }
-
-    let outcome = receiptEmailService.OUTCOME.RECEIVED;
-    if (statusAfter !== booking.status) outcome = receiptEmailService.OUTCOME.CONFIRMED;
-    else if (booking.status === BOOKING_STATUS.TO_PAY) {
-      outcome = receiptEmailService.OUTCOME.PARTIAL_DOWNPAYMENT;
-    }
-
-    return { status: 'verified', paymentId: payment.id, bookingId: booking.id, outcome };
+    return { status: payment.proofUrl ? 'awaiting_review' : 'awaiting_proof' };
   });
 
-  if (result.status === 'verified') {
-    await sendReceipt({
-      paymentId: result.paymentId,
-      bookingId: result.bookingId,
-      outcome: result.outcome,
-    });
-  } else if (result.status === 'terminal') {
+  if (result.status === 'terminal') {
     console.warn(
       `Ignoring NetCorePay payment ${providerPaymentId}: local payment is already ${result.paymentStatus}.`
     );

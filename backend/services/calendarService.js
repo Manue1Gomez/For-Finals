@@ -6,7 +6,13 @@ const blockedDateModel = require('../models/blockedDateModel');
 const blockedTimeModel = require('../models/blockedTimeModel');
 const bookingManagementModel = require('../models/bookingManagementModel');
 const { CALENDAR_STATUSES, UPCOMING_STATUSES } = require('../config/bookingStatus');
-const { formatMinutes, isValidIsoDate, timeTextToMinutes, todayIso } = require('./timeHelper');
+const {
+  businessTimeMinutes,
+  formatMinutes,
+  isValidIsoDate,
+  timeTextToMinutes,
+  todayIso,
+} = require('./timeHelper');
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const MYSQL_DUPLICATE_ENTRY = 'ER_DUP_ENTRY';
@@ -72,8 +78,7 @@ function intervalsOverlap(first, second) {
 }
 
 function currentMinutes() {
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
+  return businessTimeMinutes(new Date());
 }
 
 async function getMonthOverview(month) {

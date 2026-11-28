@@ -18,7 +18,7 @@ test('a submitted payment has its own status until it is verified', () => {
   );
   assert.equal(
     customerFacingBookingStatus(BOOKING_STATUS.CONFIRMED, true),
-    BOOKING_STATUS.CONFIRMED
+    CUSTOMER_BOOKING_STATUS.FOR_VERIFICATION
   );
   assert.equal(
     customerFacingBookingStatus(BOOKING_STATUS.PENDING, false),

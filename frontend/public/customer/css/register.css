@@ -1,12 +1,19 @@
 .auth-page--register {
+  min-height: 100vh;
+}
+
+.auth-page--register #root {
   display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
   padding: 1.5rem;
 }
 
 .register {
   width: 100%;
   max-width: 39rem;
-  margin: auto;
+  margin: 0;
   padding: 1.75rem 2rem 1.9rem;
   text-align: center;
   border: 2px solid var(--color-ink-soft);

@@ -24,7 +24,7 @@ function statusAfterPayment(currentStatus, paidCents, totalCents) {
 }
 
 function customerFacingBookingStatus(bookingStatus, hasPendingPayment) {
-  return bookingStatus === BOOKING_STATUS.TO_PAY && hasPendingPayment
+  return [BOOKING_STATUS.TO_PAY, BOOKING_STATUS.CONFIRMED].includes(bookingStatus) && hasPendingPayment
     ? CUSTOMER_BOOKING_STATUS.FOR_VERIFICATION
     : bookingStatus;
 }
