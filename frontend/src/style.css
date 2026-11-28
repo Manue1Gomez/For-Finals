@@ -1,0 +1,10 @@
+#root {
+  min-height: 100vh;
+}
+
+.page-load-error,
+.not-found {
+  margin: 2rem auto;
+  max-width: 48rem;
+  padding: 1rem;
+}
