@@ -23,6 +23,14 @@ async function getBookingDetails(req, res, next) {
   }
 }
 
+async function cancelBooking(req, res, next) {
+  try {
+    res.json(await customerDashboardService.cancelBooking(customerId(req), req.params.id));
+  } catch (error) {
+    sendError(error, res, next);
+  }
+}
+
 async function submitPayment(req, res, next) {
   try {
     const result = await customerDashboardService.submitPayment(customerId(req), req.params.id, req.file);
@@ -102,6 +110,7 @@ async function changePassword(req, res, next) {
 module.exports = {
   listBookings,
   getBookingDetails,
+  cancelBooking,
   submitPayment,
   startGCashPayment,
   applyVoucher,

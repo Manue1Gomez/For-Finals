@@ -2,12 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AccountLayout from '../components/AccountLayout.jsx';
 import { getJson, postJson } from '../lib/api.js';
+import { getBusinessDate, getBusinessDateOffset, getBusinessMonthStart } from '../lib/businessDate.js';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tues', 'Wed', 'Thurs', 'Fri', 'Sat'];
-
-function isoDate(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
 
 function formatDate(value) {
   const [year, month, day] = value.split('-').map(Number);
@@ -29,6 +26,40 @@ function formatTime(value) {
   return `${String(hours % 12 || 12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
 }
 
+function ServiceConflictDialog({ onClose }) {
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="service-conflict-dialog"
+      aria-labelledby="serviceConflictTitle"
+      aria-describedby="serviceConflictMessage"
+      onClose={onClose}
+    >
+      <div className="service-conflict-dialog__content">
+        <span className="service-conflict-dialog__icon" aria-hidden="true">!</span>
+        <h2 className="service-conflict-dialog__title" id="serviceConflictTitle">Services can&apos;t be combined</h2>
+        <p className="service-conflict-dialog__text" id="serviceConflictMessage">
+          Modeling Workshop is a full-day service and must be booked by itself. Please remove it or choose another service.
+        </p>
+        <button
+          className="service-conflict-dialog__button"
+          type="button"
+          onClick={() => dialogRef.current?.close()}
+        >
+          Got it
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
 export default function BookServicePage() {
   const navigate = useNavigate();
   const requestedDate = new URLSearchParams(window.location.search).get('date');
@@ -36,20 +67,20 @@ export default function BookServicePage() {
   const [customer, setCustomer] = useState(null);
   const [services, setServices] = useState([]);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [serviceConflictDialogOpen, setServiceConflictDialogOpen] = useState(false);
   const [serviceStatus, setServiceStatus] = useState('Loading services...');
   const [step, setStep] = useState(1);
   const [date, setDate] = useState(() => (
-    requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) && requestedDate >= isoDate(new Date())
+    requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) && requestedDate >= getBusinessDateOffset(2)
       ? requestedDate
       : ''
   ));
   const [calendarMonth, setCalendarMonth] = useState(() => {
-    if (requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) && requestedDate >= isoDate(new Date())) {
+    if (requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) && requestedDate >= getBusinessDateOffset(2)) {
       const [year, month] = requestedDate.split('-').map(Number);
       return new Date(year, month - 1, 1);
     }
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
+    return getBusinessMonthStart();
   });
   const [blockedDates, setBlockedDates] = useState([]);
   const [bookedDates, setBookedDates] = useState([]);
@@ -85,7 +116,8 @@ export default function BookServicePage() {
   const subtotal = selectedServices.reduce((sum, service) => sum + Number(service.price), 0);
   const total = subtotal - discountAmount;
   const monthKey = `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, '0')}`;
-  const today = isoDate(new Date());
+  const today = getBusinessDate();
+  const earliestBookingDate = getBusinessDateOffset(2);
   const currentMonth = today.slice(0, 7);
   const days = Array.from({ length: new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate() }, (_, index) => index + 1);
   const firstWeekday = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay();
@@ -194,6 +226,16 @@ export default function BookServicePage() {
   }, [date, serviceIdsKey, selectedIds.size]);
 
   function toggleService(serviceId) {
+    const service = services.find((item) => item.id === serviceId);
+    if (!service) return;
+
+    const isSelected = selectedIds.has(serviceId);
+    const isWorkshop = /modeling workshop/i.test(service.name);
+    if (!isSelected && ((isWorkshop && regularSelected) || (!isWorkshop && workshopSelected))) {
+      setServiceConflictDialogOpen(true);
+      return;
+    }
+
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(serviceId)) next.delete(serviceId);
@@ -224,6 +266,10 @@ export default function BookServicePage() {
   function continueToSummary() {
     if (!date) {
       setScheduleError('Please choose a date for your booking.');
+      return;
+    }
+    if (date < earliestBookingDate) {
+      setScheduleError('Choose a date at least two days from today.');
       return;
     }
     if (wholeDay && !dayAvailable) {
@@ -301,6 +347,9 @@ export default function BookServicePage() {
 
   return (
     <AccountLayout activePage="book-service" customer={customer} title="Book a Service | BRB Studios">
+      {serviceConflictDialogOpen && (
+        <ServiceConflictDialog onClose={() => setServiceConflictDialogOpen(false)} />
+      )}
       <div className="booking">
         <h1 className="booking__title">{steps[step - 1]}</h1>
         <p className="booking__subtitle">
@@ -339,12 +388,10 @@ export default function BookServicePage() {
             {serviceStatus && <p className="booking-step__status" role="status">{serviceStatus}</p>}
             <ul className="service-options">
               {services.map((service) => {
-                const isWorkshop = /modeling workshop/i.test(service.name);
-                const disabled = (workshopSelected && !isWorkshop) || (regularSelected && isWorkshop);
                 return (
                   <li key={service.id}>
                     <label className="service-option">
-                      <input className="service-option__input" type="checkbox" checked={selectedIds.has(service.id)} disabled={disabled} onChange={() => toggleService(service.id)} />
+                      <input className="service-option__input" type="checkbox" checked={selectedIds.has(service.id)} onChange={() => toggleService(service.id)} />
                       <span className="service-option__card">
                         <span className="service-option__media">
                           {service.imageUrl && <img className="service-option__image" src={service.imageUrl} alt={service.name} />}
@@ -362,7 +409,6 @@ export default function BookServicePage() {
                 );
               })}
             </ul>
-            {workshopSelected && <p className="form-alert form-alert--error" role="status">Modeling Workshop cannot be combined with any other service.</p>}
             <footer className="booking-step__footer booking-step__footer--end">
               <button className="btn-primary" type="button" disabled={!selectedIds.size || Boolean(serviceStatus)} onClick={() => goToStep(2)}>Continue</button>
             </footer>
@@ -384,7 +430,7 @@ export default function BookServicePage() {
                     {Array.from({ length: firstWeekday }, (_, index) => <span key={`empty-${index}`} />)}
                     {days.map((day) => {
                       const iso = `${monthKey}-${String(day).padStart(2, '0')}`;
-                      const past = iso < today;
+                      const past = iso < earliestBookingDate;
                       const blocked = blockedDates.includes(iso);
                       const booked = bookedDates.includes(iso);
                       const selected = date === iso;
@@ -404,7 +450,7 @@ export default function BookServicePage() {
                       );
                     })}
                   </div>
-                  <p className="calendar__legend">Marked dates have bookings; select a date to see available times.</p>
+                  <p className="calendar__legend">Bookings start {formatDate(earliestBookingDate)}. Marked dates have bookings; select a date to see available times.</p>
                   {calendarStatus && <p className="calendar__status" role="status">{calendarStatus}</p>}
                 </div>
               </div>

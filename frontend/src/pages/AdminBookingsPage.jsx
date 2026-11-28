@@ -5,8 +5,8 @@ import { deleteRequest, getJson, sendJson } from '../lib/adminApi.js';
 
 const API_BASE = '/api/admin/bookings';
 const CONTRACT_PAGE = '/customer/html/contract.html';
-const STATUS_TABS = ['Pending', 'To Pay', 'Confirmed', 'Completed', 'Rejected'];
-const GROUP_LABELS = { upcoming: 'Upcoming', ongoing: 'Ongoing', completed: 'Completed', rejected: 'Rejected' };
+const STATUS_TABS = ['Pending', 'To Pay', 'Confirmed', 'Completed', 'Rejected', 'Cancelled'];
+const GROUP_LABELS = { upcoming: 'Upcoming', ongoing: 'Ongoing', completed: 'Completed', rejected: 'Rejected', cancelled: 'Cancelled' };
 const DATE_FORMAT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 const LONG_DATE_FORMAT = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 const TIME_FORMAT = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -107,6 +107,7 @@ function AdminBookingsPage() {
   const [confirm, setConfirm] = useState(null);
   const [confirmError, setConfirmError] = useState('');
   const [confirmPending, setConfirmPending] = useState(false);
+  const [acceptingBookingId, setAcceptingBookingId] = useState(null);
   const [toast, setToast] = useState(null);
   const requestId = useRef(0);
   const availabilityRequestId = useRef(0);
@@ -285,22 +286,55 @@ function AdminBookingsPage() {
       showToast(confirm.successMessage);
       setRefreshVersion((current) => current + 1);
     } catch (error) {
-      setConfirmError(error.message || 'The booking action could not be completed.');
+      if (confirm.kind === 'accept' && Array.isArray(error.fieldErrors?.conflicts)) {
+        openAcceptConfirmation(
+          confirm.booking,
+          error.fieldErrors.conflicts,
+          'The pending requests changed while you were reviewing. Check the updated list and confirm again.',
+        );
+      } else {
+        setConfirmError(error.message || 'The booking action could not be completed.');
+      }
     } finally {
       setConfirmPending(false);
     }
   }
 
-  function acceptBooking(booking) {
+  function openAcceptConfirmation(booking, conflicts, warning = '') {
     const requiredDownpayment = Math.ceil((booking.totalAmount * 100) / 2) / 100;
-    openConfirmation({
+    const pendingConflictIds = conflicts.map((conflict) => Number(conflict.id));
+    const conflictCount = conflicts.length;
+    setConfirm({
+      kind: 'accept',
+      booking,
+      conflicts,
       title: 'Accept this booking?',
-      message: `Booking #${booking.reference} for ${booking.customerName} on ${formatDate(booking.eventDate)} (${booking.timeLabel}) will be accepted. The customer can then pay the 50% downpayment of ${formatPeso(requiredDownpayment)}.`,
-      confirmLabel: 'Accept booking',
+      message: conflictCount
+        ? `Booking #${booking.reference} for ${booking.customerName} on ${formatDate(booking.eventDate)} (${booking.timeLabel}) overlaps ${conflictCount} pending request${conflictCount === 1 ? '' : 's'}. Accepting it will reject the listed request${conflictCount === 1 ? '' : 's'} and email those customers to choose another date or time. The customer for this booking can then pay the 50% downpayment of ${formatPeso(requiredDownpayment)}.`
+        : `Booking #${booking.reference} for ${booking.customerName} on ${formatDate(booking.eventDate)} (${booking.timeLabel}) will be accepted. The customer can then pay the 50% downpayment of ${formatPeso(requiredDownpayment)}.`,
+      confirmLabel: conflictCount ? 'Accept and decline conflicts' : 'Accept booking',
       variant: 'success',
-      action: () => sendJson(`${API_BASE}/${booking.id}`, 'PUT', { status: 'To Pay' }),
-      successMessage: `Booking #${booking.reference} was accepted.`,
+      action: () => sendJson(`${API_BASE}/${booking.id}`, 'PUT', {
+        status: 'To Pay',
+        pendingConflictIds,
+      }),
+      successMessage: `Booking #${booking.reference} was accepted.${conflictCount ? ` ${conflictCount} conflicting request${conflictCount === 1 ? ' was' : 's were'} declined.` : ''}`,
     });
+    setConfirmError(warning);
+    setConfirmPending(false);
+  }
+
+  async function acceptBooking(booking) {
+    setAcceptingBookingId(booking.id);
+    try {
+      const { conflicts } = await getJson(`${API_BASE}/${booking.id}/acceptance-conflicts`);
+      if (!Array.isArray(conflicts)) throw new Error('The server returned an invalid conflict list.');
+      openAcceptConfirmation(booking, conflicts);
+    } catch (error) {
+      showToast(error.message || 'Unable to check for conflicting requests.', 'error');
+    } finally {
+      setAcceptingBookingId(null);
+    }
   }
 
   function declineBooking(booking) {
@@ -338,7 +372,7 @@ function AdminBookingsPage() {
     if (action === 'view') void openView(booking.id);
     else if (action === 'contract') openContract(booking.id);
     else if (action === 'delete') deleteBooking(booking);
-    else if (action === 'accept') acceptBooking(booking);
+    else if (action === 'accept') void acceptBooking(booking);
     else if (action === 'decline') declineBooking(booking);
   }
 
@@ -451,7 +485,9 @@ function AdminBookingsPage() {
                           <span className={`pill pill--${statusSlug(booking.status)}`}>{booking.status}</span>
                           {booking.status === 'Pending' && (
                             <div className="quick-actions">
-                              <button className="btn btn--sm btn--success" type="button" data-action="accept" onClick={(event) => bookingAction(event, booking)}>Accept</button>
+                              <button className="btn btn--sm btn--success" type="button" data-action="accept" disabled={acceptingBookingId === booking.id} onClick={(event) => bookingAction(event, booking)}>
+                                {acceptingBookingId === booking.id ? 'Checking...' : 'Accept'}
+                              </button>
                               <button className="btn btn--sm btn--danger" type="button" data-action="decline" onClick={(event) => bookingAction(event, booking)}>Decline</button>
                             </div>
                           )}
@@ -617,6 +653,15 @@ function AdminBookingsPage() {
           <div className="dialog__form">
             <h2 className="dialog__title" id="confirmTitle">{confirm.title}</h2>
             <p className="dialog__text">{confirm.message}</p>
+            {confirm.conflicts?.length > 0 && (
+              <ul className="dialog__conflicts">
+                {confirm.conflicts.map((conflict) => (
+                  <li key={conflict.id}>
+                    Booking #{conflict.reference} — {conflict.customerName}, {formatDate(conflict.eventDate)} · {conflict.startTime}–{conflict.endTime}
+                  </li>
+                ))}
+              </ul>
+            )}
             {confirmError && <p className="alert alert--error" role="alert">{confirmError}</p>}
             <div className="dialog__actions">
               <button className="btn" type="button" data-dialog-close disabled={confirmPending}>Cancel</button>

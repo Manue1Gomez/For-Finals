@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageStyles from '../components/PageStyles.jsx';
 import { getJson } from '../lib/api.js';
+import { CONTRACT_PAGE_STYLES } from '../lib/pageStyles.js';
 
 const STUDIO_MAP_URL = 'https://l.facebook.com/l.php?u=https%3A%2F%2Fwww.bing.com%2Fmaps%2Fdefault.aspx%3Fv%3D2%26pc%3DFACEBK%26mid%3D8100%26where1%3D13.932117479722%252C%2520120.81314808899%26FORM%3DFBKPL1%26name%3DMarasigan%2520St.%2520Poblacion%25204%252C%2520Calaca%2520City%252C%2520Calaca%252C%2520Philippines%252C%25204212%26mkt%3Den-GB%26fbclid%3DIwZXh0bgNhZW0CMTAAcGRvZgVicmlkETFWekJxRFV4WEpYODJPaXRnc3J0YwZhcHBfaWQQMjIyMDM5MTc4ODIwMDg5MgABH0WStDvUVIv76aw0_9FUWlrV32tO_Jtvw5JwjSmXP9k9JucgbbRkdWnHKP7U_aem_wS08rMv-8UNYNwPW9y1TKw&h=AUD2XMspgMC1iEqx1S5lERRr4114H8tg-UQazJSYYBR_-U44t6VqTZ_PrdzNJaVksXfUQeYI5bO-py7ve4KPCNMbzRN5muBXxZaGAzfn0bexOPa_ZuSTif751kWEiIwDXoFd';
 const longDateFormat = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -82,7 +83,7 @@ export default function ContractPage() {
 
   return (
     <>
-      <PageStyles bodyClass="" title={title} />
+      <PageStyles bodyClass="" stylesheets={CONTRACT_PAGE_STYLES} title={title} />
 
       <div className="contract-toolbar no-print">
         <button className="contract-toolbar__back" type="button" onClick={() => goBack(fromAdmin, navigate)}>
@@ -214,7 +215,7 @@ export default function ContractPage() {
             <ol className="contract-terms">
               <li>The client agrees to pay a 50% downpayment upon confirmation of the booking. The remaining balance must be settled on or before the event date.</li>
               <li>The downpayment is <strong>non-refundable</strong> once the booking is confirmed, except in cases of force majeure or cancellation initiated by BRB Studios.</li>
-              <li>Rescheduling requests must be submitted through the online booking system at least 7 days before the event date and are subject to studio availability and owner approval.</li>
+              <li>Rescheduling requests must be submitted through the online booking system at least 2 days before the event date and are subject to studio availability and owner approval.</li>
               <li>The Modeling Workshop service may only be rescheduled by the studio owner.</li>
               <li>BRB Studios reserves the right to cancel or reschedule bookings due to unforeseen circumstances, with prior notice to the client.</li>
               <li>The client agrees to cooperate and be available at the agreed schedule. Delays caused by the client may affect the quality or completion of services.</li>

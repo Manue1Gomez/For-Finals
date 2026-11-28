@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PageStyles from '../components/PageStyles.jsx';
 import { getJson, postJson } from '../lib/api.js';
+import { HOME_PAGE_STYLES } from '../lib/pageStyles.js';
+import { getBusinessDate, getBusinessMonthStart } from '../lib/businessDate.js';
 
 const STUDIO_MAP_URL = 'https://l.facebook.com/l.php?u=https%3A%2F%2Fwww.bing.com%2Fmaps%2Fdefault.aspx%3Fv%3D2%26pc%3DFACEBK%26mid%3D8100%26where1%3D13.932117479722%252C%2520120.81314808899%26FORM%3DFBKPL1%26name%3DMarasigan%2520St.%2520Poblacion%25204%252C%2520Calaca%2520City%252C%2520Calaca%252C%2520Philippines%252C%25204212%26mkt%3Den-GB%26fbclid%3DIwZXh0bgNhZW0CMTAAcGRvZgVicmlkETFWekJxRFV4WEpYODJPaXRnc3J0YwZhcHBfaWQQMjIyMDM5MTc4ODIwMDg5MgABH0WStDvUVIv76aw0_9FUWlrV32tO_Jtvw5JwjSmXP9k9JucgbbRkdWnHKP7U_aem_wS08rMv-8UNYNwPW9y1TKw&h=AUD2XMspgMC1iEqx1S5lERRr4114H8tg-UQazJSYYBR_-U44t6VqTZ_PrdzNJaVksXfUQeYI5bO-py7ve4KPCNMbzRN5muBXxZaGAzfn0bexOPa_ZuSTif751kWEiIwDXoFd';
 
@@ -12,13 +14,6 @@ function formatLongDate(isoDate) {
     month: 'long',
     year: 'numeric',
   });
-}
-
-function formatIsoDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 }
 
 function LogoutConfirmDialog({ onClose }) {
@@ -57,10 +52,7 @@ export default function HomePage() {
   const [dayStatus, setDayStatus] = useState('Choose a date on the calendar to see its bookings.');
   const [dayBookings, setDayBookings] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
-  const [calendarMonth, setCalendarMonth] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
+  const [calendarMonth, setCalendarMonth] = useState(() => getBusinessMonthStart());
   const [blockedDates, setBlockedDates] = useState([]);
   const [bookedDates, setBookedDates] = useState([]);
   const [calendarStatus, setCalendarStatus] = useState('');
@@ -161,9 +153,9 @@ export default function HomePage() {
         setBlockedDates(response.data.blockedDates);
         setBookedDates(response.data.bookedDates);
 
-        const today = formatIsoDate(new Date());
+        const today = getBusinessDate();
         const currentMonthKey = today.slice(0, 7);
-        if (!initialDateSelectedRef.current && monthKey === currentMonthKey && !response.data.blockedDates.includes(today)) {
+        if (!initialDateSelectedRef.current && monthKey === today.slice(0, 7) && !response.data.blockedDates.includes(today)) {
           initialDateSelectedRef.current = true;
           void loadDay(today);
         }
@@ -240,12 +232,16 @@ export default function HomePage() {
     (_, index) => index + 1,
   );
   const calendarSpacers = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay();
-  const todayIso = formatIsoDate(new Date());
-  const currentMonth = new Date(todayIso.slice(0, 7) + '-01');
+  const todayIso = getBusinessDate();
+  const currentMonthKey = todayIso.slice(0, 7);
 
   return (
     <>
-      <PageStyles bodyClass="home-page" title="BRB Studios | Home" />
+      <PageStyles
+        bodyClass="home-page"
+        stylesheets={HOME_PAGE_STYLES}
+        title="BRB Studios | Home"
+      />
 
       <header className="site-header" id="siteHeader" ref={headerRef}>
         <div className="site-header__inner">
@@ -339,7 +335,7 @@ export default function HomePage() {
                     className="calendar__nav calendar__nav--prev"
                     type="button"
                     aria-label="Previous month"
-                    disabled={monthKey === `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`}
+                    disabled={monthKey === currentMonthKey}
                     onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
                   ></button>
                   <p className="calendar__month" aria-live="polite">

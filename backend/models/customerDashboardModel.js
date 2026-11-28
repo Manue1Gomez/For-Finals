@@ -12,6 +12,8 @@ const FIRST_IMAGE_SUBQUERY = `(
     FROM booking_service bs2
     JOIN service s2 ON s2.service_id = bs2.service_id
    WHERE bs2.booking_id = b.booking_id
+     AND s2.image_path IS NOT NULL
+     AND s2.image_path <> ''
    ORDER BY s2.service_id
    LIMIT 1
 )`;
@@ -84,11 +86,26 @@ async function findServicesByBooking(bookingId) {
 async function findReschedulable(customerId, bookingId) {
   // Returns the booking only when it belongs to the customer and is reschedulable
   const [[row]] = await pool.query(
-    `SELECT b.booking_id AS id, b.status AS status
+    `SELECT b.booking_id AS id,
+            CASE
+              WHEN b.status = 'To Pay' THEN 'For Verification'
+              ELSE b.status
+            END AS status
        FROM booking b
       WHERE b.booking_id = ?
         AND b.customer_id = ?
-        AND b.status IN ('To Pay', 'Confirmed')`,
+        AND (
+          b.status = 'Confirmed'
+          OR (
+            b.status = 'To Pay'
+            AND EXISTS (
+              SELECT 1
+                FROM payment p
+               WHERE p.booking_id = b.booking_id
+                 AND p.status = 'Pending'
+            )
+          )
+        )`,
     [bookingId, customerId]
   );
   return row || null;

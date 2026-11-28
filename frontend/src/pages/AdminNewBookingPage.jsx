@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout.jsx';
 import { getJson, sendJson } from '../lib/adminApi.js';
+import { ADMIN_NEW_BOOKING_STYLES } from '../lib/pageStyles.js';
 
 const WALK_IN_API = '/api/admin/walk-in';
 const VOUCHER_API = '/api/admin/vouchers';
@@ -565,6 +566,7 @@ function AdminNewBookingPage() {
   return (
     <AdminLayout
       activePage="bookings"
+      pageStyles={ADMIN_NEW_BOOKING_STYLES}
       title="New Booking | BRB Studios Admin"
     >
       <main className="admin-main">

@@ -234,6 +234,16 @@ textarea.field__input {
   line-height: 1.5;
 }
 
+.dialog__conflicts {
+  display: grid;
+  gap: 0.4rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
 .dialog__actions {
   display: flex;
   justify-content: flex-end;

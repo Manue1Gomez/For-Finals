@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import AuthField from '../components/AuthField.jsx';
 import PageStyles from '../components/PageStyles.jsx';
 import { getServerError, postJson } from '../lib/api.js';
+import { REGISTER_PAGE_STYLES } from '../lib/pageStyles.js';
 
 const REQUIRED_MESSAGES = {
   firstName: 'First name is required.',
@@ -74,6 +75,7 @@ export default function RegisterPage() {
     <>
       <PageStyles
         bodyClass="auth-page auth-page--register"
+        stylesheets={REGISTER_PAGE_STYLES}
         title="Create Account | BRB Studios"
       />
       <main className="register">

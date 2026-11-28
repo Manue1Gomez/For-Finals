@@ -133,13 +133,6 @@
   overflow-wrap: break-word;
 }
 
-.booking-card__description {
-  margin-top: 0.2rem;
-  font-size: 0.8125rem;
-  color: var(--color-muted);
-  line-height: 1.4;
-}
-
 .booking-card__price {
   margin-top: 0.4rem;
   font-size: 1.1rem;
@@ -158,6 +151,13 @@
   display: flex;
   gap: 0.6rem;
   margin-top: auto;
+}
+
+.booking-card__actions > a.booking-card__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .booking-card__waiting {
@@ -194,6 +194,11 @@
 
 .booking-card__btn--outline:hover {
   background: #fde8e8;
+}
+
+.booking-card__btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 /* ── Detail modal ────────────────────────────────────────────────────── */
@@ -294,6 +299,10 @@
   background: #922b21;
 }
 
+.detail__status-banner--cancelled {
+  background: #6b6b70;
+}
+
 .detail__ref {
   grid-column: 1 / -1;
   font-size: 0.875rem;
@@ -390,6 +399,20 @@
 
 .detail--details-only .detail__payment-panel {
   display: none;
+}
+
+.detail--details-only .payment-history {
+  display: none;
+}
+
+.detail--details-only .detail__summary {
+  grid-column: 1 / -1;
+  width: min(100%, 38rem);
+  justify-self: center;
+}
+
+.detail--details-only .detail__summary-title {
+  text-align: center;
 }
 
 .detail__gcash-btn {
@@ -640,6 +663,24 @@
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
+}
+
+.detail__reschedule-unavailable {
+  align-self: center;
+  margin-right: auto;
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+}
+
+.booking-cancel-modal {
+  max-width: 32rem;
+}
+
+.booking-cancel-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
 }
 
 /* ── Reschedule request notice ──────────────────────────────────────── */

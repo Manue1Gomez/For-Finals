@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PageStyles from './PageStyles.jsx';
 import { ADMIN_SESSION_EXPIRED_EVENT, getJson, sendJson } from '../lib/adminApi.js';
+import { ADMIN_PAGE_STYLES, ADMIN_SHARED_STYLES } from '../lib/pageStyles.js';
+
+const EMPTY_STYLESHEETS = [];
 
 const NAV_ITEMS = [
   ['dashboard', 'Dashboard', '/admin/html/dashboard.html', 'dashboard'],
@@ -41,7 +44,12 @@ function LogoutDialog({ onClose }) {
   );
 }
 
-export default function AdminLayout({ activePage, children, title }) {
+export default function AdminLayout({
+  activePage,
+  children,
+  pageStyles = EMPTY_STYLESHEETS,
+  title,
+}) {
   const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia('(max-width: 760px)').matches);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
@@ -49,6 +57,10 @@ export default function AdminLayout({ activePage, children, title }) {
   const [error, setError] = useState('');
   const sidebarRef = useRef(null);
   const toggleRef = useRef(null);
+  const stylesheets = useMemo(
+    () => [...ADMIN_SHARED_STYLES, ...(ADMIN_PAGE_STYLES[activePage] ?? []), ...pageStyles],
+    [activePage, pageStyles],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +117,7 @@ export default function AdminLayout({ activePage, children, title }) {
     <>
       <PageStyles
         bodyClass="admin-layout"
+        stylesheets={stylesheets}
         title={title}
       />
       <aside className="sidebar" id="adminSidebar" ref={sidebarRef}>

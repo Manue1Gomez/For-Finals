@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import PageStyles from './components/PageStyles.jsx';
 import HomePage from './pages/HomePage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
@@ -60,10 +61,13 @@ export default function App() {
         <Route
           path="*"
           element={(
-            <main className="not-found">
-              <h1>Page not found</h1>
-              <Link to="/customer/html/home.html">Return to BRB Studios</Link>
-            </main>
+            <>
+              <PageStyles bodyClass="" title="Page not found | BRB Studios" />
+              <main className="not-found">
+                <h1>Page not found</h1>
+                <Link to="/customer/html/home.html">Return to BRB Studios</Link>
+              </main>
+            </>
           )}
         />
       </Routes>

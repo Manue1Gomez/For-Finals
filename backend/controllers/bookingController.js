@@ -17,6 +17,14 @@ async function details(req, res, next) {
   }
 }
 
+async function acceptanceConflicts(req, res, next) {
+  try {
+    res.json(await bookingService.getAcceptanceConflicts(req.params.id));
+  } catch (error) {
+    sendError(error, res, next);
+  }
+}
+
 async function update(req, res, next) {
   try {
     res.json(await bookingService.updateBooking(req.params.id, req.body));
@@ -51,4 +59,4 @@ async function autoComplete(req, res, next) {
   }
 }
 
-module.exports = { list, details, update, availability, remove, autoComplete };
+module.exports = { list, details, acceptanceConflicts, update, availability, remove, autoComplete };

@@ -11,6 +11,7 @@ router.use(requireCustomer);
 router.get('/bookings', ctrl.listBookings);
 router.get('/bookings/:id/reschedule-availability', ctrl.getRescheduleAvailability);
 router.get('/bookings/:id', ctrl.getBookingDetails);
+router.delete('/bookings/:id', ctrl.cancelBooking);
 
 // Payment proof upload
 router.post('/bookings/:id/payment', uploadSingleImage('proof'), ctrl.submitPayment);
